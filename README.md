@@ -74,10 +74,23 @@ BaaPP-backend/
 ## Ejecución Local (Desarrollo)
 
 ### Instalación Rápida en Windows (Recomendado)
-Ejecuta el script incluido para instalar automáticamente **JDK 21**, **Node 22**, **PostgreSQL 16** (con la base `oviapp`) y **Android SDK 35** *(usa `-SkipAndroid` si solo trabajarás en backend/web)*:
+Desde la carpeta raíz de `BaaPP-backend`, abre PowerShell y ejecuta:
 ```powershell
+# Instala todo (Backend + Web + Android)
 powershell -ExecutionPolicy Bypass -File .\scripts\setup-dev.ps1
+
+# O si solo trabajarás en Backend y Web (omite Android SDK)
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-dev.ps1 -SkipAndroid
 ```
+
+**¿Qué hace [`scripts/setup-dev.ps1`](scripts/setup-dev.ps1)?**
+1. **JDK 21 (Amazon Corretto):** Lo instala vía `winget` si no existe, configura `JAVA_HOME` y lo agrega a tu `PATH` de usuario.
+2. **Node.js 22 LTS:** Instala `fnm` + Node 22 LTS y lo agrega a tu `PATH` de usuario.
+3. **PostgreSQL 16.16:** Descarga la versión portable en `%LOCALAPPDATA%\Programs\PostgreSQL\16`, inicializa el clúster (`initdb` con usuario `postgres`), arranca el servidor y crea la base `oviapp`.
+4. **Android SDK 35** *(salvo con `-SkipAndroid`)*: Descarga Command-Line Tools en `%LOCALAPPDATA%\Android\Sdk`, configura `ANDROID_HOME`, acepta licencias e instala `platform-tools`, `platforms;android-35` y `build-tools;35.0.0`.
+5. **Dependencias y verificación:** Si `../BaaPP_webapp` está en la misma carpeta padre, corre `npm install`; finalmente ejecuta `.\gradlew.bat test` para comprobar que el backend compila y pasa ArchUnit y las pruebas de dominio.
+
+> Una vez terminado, abre una **nueva terminal** para tomar las variables de entorno y ejecuta `.\gradlew.bat bootRun`.
 
 ### 1. Requisitos Previos (Manual)
 * **JDK 21** (Amazon Corretto 21 o Eclipse Temurin 21).
