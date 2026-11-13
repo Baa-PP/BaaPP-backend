@@ -71,6 +71,40 @@ BaaPP-backend/
 
 ---
 
+## Ejecución Local (Desarrollo)
+
+### 1. Requisitos Previos
+* **JDK 21** (Amazon Corretto 21 o Eclipse Temurin 21).
+* **PostgreSQL 16** corriendo localmente en el puerto `5432`.
+
+### 2. Preparar la Base de Datos
+Crea la base de datos vacía en PostgreSQL (**Flyway** ejecutará automáticamente `V1__init_schema.sql` al arrancar):
+```sql
+CREATE DATABASE oviapp;
+```
+
+### 3. Variables de Entorno (Opcional)
+Por defecto [`application.yml`](src/main/resources/application.yml) conecta a `jdbc:postgresql://localhost:5432/oviapp` con usuario `postgres` y contraseña `postgres` en el puerto `5000`. Para usar credenciales distintas en PowerShell:
+```powershell
+$env:JDBC_DATABASE_URL="jdbc:postgresql://localhost:5432/oviapp"
+$env:RDS_USERNAME="postgres"
+$env:RDS_PASSWORD="tu_password"
+$env:PORT="5000"
+```
+
+### 4. Compilar, Probar y Levantar el Servidor
+* **Desde IntelliJ IDEA:** Abre la carpeta `BaaPP-backend`, espera a que sincronice Gradle y ejecuta `OviAppBackendApplication.kt`.
+* **Desde Terminal** (si es la primera vez sin el wrapper, ejecuta antes `gradle wrapper`):
+  ```bash
+  # Ejecutar pruebas de ArchUnit, fórmulas zootécnicas y reglas antifraude
+  ./gradlew test
+
+  # Iniciar el servidor Spring Boot en http://localhost:5000
+  ./gradlew bootRun
+  ```
+
+---
+
 ## Equipo de Desarrollo
 
 * **[Lucas Patrick Castineiras]** — Ingeniería de Software (5.º Semestre) · [GitHub](https://github.com/Locas1000)
