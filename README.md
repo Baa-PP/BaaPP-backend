@@ -78,7 +78,11 @@ BaaPP-backend/
 * **PostgreSQL 16** corriendo localmente en el puerto `5432`.
 
 ### 2. Preparar la Base de Datos
-Crea la base de datos vacía en PostgreSQL (**Flyway** ejecutará automáticamente `V1__init_schema.sql` al arrancar):
+Si usas la instalación local de PostgreSQL 16 en `%LOCALAPPDATA%\Programs\PostgreSQL\16`, inicia el servicio y crea la base `oviapp` (ya creada en este equipo; **Flyway** ejecutará `V1__init_schema.sql` automáticamente al arrancar):
+```powershell
+pg_ctl -D "$env:LOCALAPPDATA\Programs\PostgreSQL\16\data" -l "$env:LOCALAPPDATA\Programs\PostgreSQL\16\postgres.log" start
+```
+En una máquina nueva, crea la base vacía en PostgreSQL:
 ```sql
 CREATE DATABASE oviapp;
 ```
