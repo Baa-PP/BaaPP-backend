@@ -73,7 +73,13 @@ BaaPP-backend/
 
 ## Ejecución Local (Desarrollo)
 
-### 1. Requisitos Previos
+### Instalación Rápida en Windows (Recomendado)
+Ejecuta el script incluido para instalar automáticamente **JDK 21**, **Node 22**, **PostgreSQL 16** (con la base `oviapp`) y **Android SDK 35** *(usa `-SkipAndroid` si solo trabajarás en backend/web)*:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-dev.ps1
+```
+
+### 1. Requisitos Previos (Manual)
 * **JDK 21** (Amazon Corretto 21 o Eclipse Temurin 21).
 * **PostgreSQL 16** corriendo localmente en el puerto `5432`.
 
