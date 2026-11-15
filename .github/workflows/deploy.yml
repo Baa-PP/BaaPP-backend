@@ -1,0 +1,49 @@
+name: Deploy Backend to AWS Elastic Beanstalk
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test and build bootJar
+        run: |
+          chmod +x gradlew
+          ./gradlew test bootJar
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-2' }}
+
+      - name: Upload JAR and update Elastic Beanstalk
+        env:
+          EB_APP_NAME: baapp-backend
+          EB_ENV_NAME: baapp-backend-main
+        run: |
+          BUCKET=$(aws elasticbeanstalk create-storage-location --query S3Bucket --output text)
+          VERSION="main-${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}"
+          JAR_FILE=$(find build/libs -maxdepth 1 -name '*.jar' ! -name '*-plain.jar' | head -n 1)
+
+          aws s3 cp "$JAR_FILE" "s3://$BUCKET/$EB_APP_NAME/$VERSION.jar"
+          aws elasticbeanstalk create-application-version \
+            --application-name "$EB_APP_NAME" \
+            --version-label "$VERSION" \
+            --source-bundle "S3Bucket=$BUCKET,S3Key=$EB_APP_NAME/$VERSION.jar"
+          aws elasticbeanstalk update-environment \
+            --environment-name "$EB_ENV_NAME" \
+            --version-label "$VERSION"
