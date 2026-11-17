@@ -19,7 +19,7 @@ El archivo `BaaPP-backend/src/main/resources/db/migration/V1__init_schema.sql` *
 | `V1__init_schema.sql` | 7 tablas base | Aplicada en RDS |
 | `V2__mvp_gaps_and_indexes.sql` | §4: asociaciones, columnas faltantes de `animals` / `birth_events` / `weight_measurements` y 7 índices | Nueva |
 | `V3__reproduccion_salud_alimentacion_finanzas.sql` | 4 catálogos + 12 tablas (§8): empadres, salud, alimentación, competencias y movimientos | Nueva |
-| `R__vistas.sql` | 24 vistas de lectura (§9). Migración repetible: Flyway la vuelve a aplicar cada vez que cambia | Nueva |
+| `V4__vistas.sql` | 24 vistas de lectura (§9). Para cambiarlas, una migración nueva con `CREATE OR REPLACE VIEW` | Nueva |
 
 > V2 llena `weight_measurements.ranch_id` desde `animals` antes de ponerle `NOT NULL`, así que funciona aunque staging ya tenga pesajes. Probado en PostgreSQL (Neon) con y sin pesajes previos.
 > Las tablas nuevas de V3 van con nombres en **español**; las de V1/V2 conservan sus nombres en inglés porque V1 ya está aplicada. Los **valores** de los `CHECK` siguen en inglés (`PREGNANT`, `HERD`, `INCOME`…) igual que los enums de Kotlin.
@@ -284,7 +284,7 @@ Las FK hacia `animals` no tienen `ON DELETE` (RESTRICT): un animal nunca se borr
 
 ---
 
-## 9. Vistas de lectura (`R__vistas.sql`)
+## 9. Vistas de lectura (`V4__vistas.sql`)
 
 Cada pantalla pide su vista con un filtro sencillo (`WHERE rancho_id = :rancho`, `animal_id = :animal`). Los indicadores se calculan al consultar; no se guardan (§3.7).
 

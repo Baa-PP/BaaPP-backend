@@ -1,16 +1,7 @@
--- R__vistas.sql: vistas de lectura para la app móvil y el portal web.
--- Migración repetible de Flyway: se vuelve a aplicar cada vez que cambia este archivo,
--- por eso primero se borran las vistas y luego se crean de nuevo.
+-- V4__vistas.sql: vistas de lectura para la app móvil y el portal web.
 -- Nada de esto se guarda: edades, GDP, tasas e indicadores se calculan al consultar.
 -- Cordero = life_stage LAMB_LACTATING o LAMB_FATTENING · gestación 150 días · peso de venta 35 kg.
-
-DROP VIEW IF EXISTS
-    v_sabana, v_desempeno_semental, v_composicion_rebano, v_tamano_rebano_mensual,
-    v_competencias_animal, v_finanzas_mensual, v_mezcla_nutricion, v_catalogo_alimento,
-    v_alimentacion_hoy, v_consumo_marca_rancho, v_racion_periodo, v_historial_salud,
-    v_cobertura_vacunas, v_estado_vacunas, v_peso_etapa, v_ranking_crecimiento,
-    v_historial_reproductivo_hembra, v_reproduccion_temporada, v_partos, v_cargadas,
-    v_genealogia, v_pesaje_ganancia, v_resumen_rancho, v_animal_resumen;
+-- Para cambiar una vista después, crear una migración nueva (V5__…) con CREATE OR REPLACE VIEW.
 
 -- 1. Ficha y lista del rebaño
 CREATE VIEW v_animal_resumen AS
