@@ -10,8 +10,7 @@ DROP VIEW IF EXISTS
     v_alimentacion_hoy, v_consumo_marca_rancho, v_racion_periodo, v_historial_salud,
     v_cobertura_vacunas, v_estado_vacunas, v_peso_etapa, v_ranking_crecimiento,
     v_historial_reproductivo_hembra, v_reproduccion_temporada, v_partos, v_cargadas,
-    v_genealogia, v_pesaje_ganancia, v_resumen_rancho, v_animal_resumen
-CASCADE;
+    v_genealogia, v_pesaje_ganancia, v_resumen_rancho, v_animal_resumen;
 
 -- 1. Ficha y lista del rebaño
 CREATE VIEW v_animal_resumen AS
@@ -233,8 +232,8 @@ FROM (
     FROM animals a
     CROSS JOIN LATERAL (
         SELECT COUNT(*)::INT                                                   AS empadres,
-               COUNT(*) FILTER (WHERE e.diagnostico IS NOT NULL)::INT          AS diagnosticados,
-               COUNT(*) FILTER (WHERE e.diagnostico = 'PREGNANT')::INT         AS prenadas,
+               COUNT(*) FILTER (WHERE e.diagnostico IS NOT NULL OR e.birth_event_id IS NOT NULL)::INT  AS diagnosticados,
+               COUNT(*) FILTER (WHERE e.diagnostico = 'PREGNANT' OR e.birth_event_id IS NOT NULL)::INT AS prenadas,
                COUNT(*) FILTER (WHERE NOT e.cerrado
                                   AND e.diagnostico IS DISTINCT FROM 'EMPTY')::INT AS abiertos
         FROM empadres e WHERE e.hembra_id = a.id
@@ -417,6 +416,7 @@ FROM (
            COALESCE(LEAD(r.fecha_inicio) OVER w, CURRENT_DATE)   AS fecha_fin,
            LEAD(r.fecha_inicio) OVER w IS NULL                   AS es_ultima
     FROM raciones r
+    WHERE r.fecha_inicio <= CURRENT_DATE
     WINDOW w AS (PARTITION BY r.animal_id ORDER BY r.fecha_inicio)
 ) rp
 JOIN animals a           ON a.id = rp.animal_id
@@ -461,10 +461,13 @@ WHERE rp.es_actual AND a.status = 'ACTIVE'
 GROUP BY rp.rancho_id, rp.alimento_id, rp.marca, rp.alimento, rp.tipo_alimento;
 
 -- 17. Catálogo para recomendar y comparar alimentos (RANK)
---     La app filtra con rancho_id IS NULL OR rancho_id = :rancho
+--     Un renglón por rancho y alimento visible para él (catálogo general + los suyos),
+--     así el ranking de precio nunca cuenta alimentos privados de otro rancho.
+--     La app filtra con rancho_id = :rancho
 CREATE VIEW v_catalogo_alimento AS
 SELECT al.id                                                              AS alimento_id,
-       al.rancho_id,
+       r.id                                                               AS rancho_id,
+       al.rancho_id IS NOT NULL                                           AS es_propio,
        al.marca,
        al.nombre,
        ti.nombre                                                          AS tipo_alimento,
@@ -474,11 +477,12 @@ SELECT al.id                                                              AS ali
        al.precio_presentacion,
        ROUND(al.precio_presentacion / al.kg_presentacion, 2)              AS precio_kg,
        ROUND(al.precio_presentacion / al.kg_presentacion / NULLIF(al.proteina_pct / 100, 0), 2) AS precio_kg_proteina,
-       RANK() OVER (PARTITION BY ti.nombre
+       RANK() OVER (PARTITION BY r.id, ti.nombre
                     ORDER BY al.precio_presentacion / al.kg_presentacion) AS lugar_precio_en_su_tipo,
        et.etapas_recomendadas,
        al.uso
 FROM alimentos al
+JOIN ranches r ON al.rancho_id IS NULL OR al.rancho_id = r.id
 JOIN tipos_alimento ti ON ti.id = al.tipo_alimento_id
 LEFT JOIN LATERAL (
     SELECT STRING_AGG(ep.nombre, ', ' ORDER BY ep.id) AS etapas_recomendadas
@@ -595,14 +599,19 @@ FROM (
            em.hembras_cubiertas, em.diagnosticados, em.prenadas,
            ROUND(100.0 * em.prenadas / NULLIF(em.diagnosticados, 0), 1) AS pct_prenez,
            cr.crias, cr.crias_muertas,
-           (SELECT ROUND(AVG(rc.ganancia_diaria_g)) FROM v_ranking_crecimiento rc
-              JOIN animals h ON h.id = rc.animal_id
-             WHERE h.sire_id = a.id)                                    AS ganancia_crias_g
+           gc.ganancia_crias_g
     FROM animals a
+    -- Se agrega una sola vez por padre (no una subconsulta por semental)
+    LEFT JOIN (
+        SELECT h.sire_id, ROUND(AVG(rc.ganancia_diaria_g)) AS ganancia_crias_g
+        FROM v_ranking_crecimiento rc
+        JOIN animals h ON h.id = rc.animal_id
+        GROUP BY h.sire_id
+    ) gc ON gc.sire_id = a.id
     CROSS JOIN LATERAL (
         SELECT COUNT(DISTINCT e.hembra_id)::INT                         AS hembras_cubiertas,
-               COUNT(*) FILTER (WHERE e.diagnostico IS NOT NULL)::INT   AS diagnosticados,
-               COUNT(*) FILTER (WHERE e.diagnostico = 'PREGNANT')::INT  AS prenadas
+               COUNT(*) FILTER (WHERE e.diagnostico IS NOT NULL OR e.birth_event_id IS NOT NULL)::INT  AS diagnosticados,
+               COUNT(*) FILTER (WHERE e.diagnostico = 'PREGNANT' OR e.birth_event_id IS NOT NULL)::INT AS prenadas
         FROM empadres e WHERE e.semental_id = a.id
     ) em
     CROSS JOIN LATERAL (
