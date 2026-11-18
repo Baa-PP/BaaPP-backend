@@ -218,3 +218,32 @@ CREATE TABLE movimientos (
 );
 
 CREATE INDEX idx_movimientos_rancho_fecha ON movimientos (rancho_id, fecha);
+
+-- Mantener actualizado_en vigente en cada UPDATE para sincronización incremental
+CREATE TRIGGER trg_empadres_actualizado_en
+    BEFORE UPDATE ON empadres
+    FOR EACH ROW EXECUTE FUNCTION actualizar_fecha_modificacion();
+
+CREATE TRIGGER trg_esquemas_vacuna_actualizado_en
+    BEFORE UPDATE ON esquemas_vacuna
+    FOR EACH ROW EXECUTE FUNCTION actualizar_fecha_modificacion();
+
+CREATE TRIGGER trg_tratamientos_actualizado_en
+    BEFORE UPDATE ON tratamientos
+    FOR EACH ROW EXECUTE FUNCTION actualizar_fecha_modificacion();
+
+CREATE TRIGGER trg_alimentos_actualizado_en
+    BEFORE UPDATE ON alimentos
+    FOR EACH ROW EXECUTE FUNCTION actualizar_fecha_modificacion();
+
+CREATE TRIGGER trg_raciones_actualizado_en
+    BEFORE UPDATE ON raciones
+    FOR EACH ROW EXECUTE FUNCTION actualizar_fecha_modificacion();
+
+CREATE TRIGGER trg_mezclas_actualizado_en
+    BEFORE UPDATE ON mezclas
+    FOR EACH ROW EXECUTE FUNCTION actualizar_fecha_modificacion();
+
+CREATE TRIGGER trg_movimientos_actualizado_en
+    BEFORE UPDATE ON movimientos
+    FOR EACH ROW EXECUTE FUNCTION actualizar_fecha_modificacion();

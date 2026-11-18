@@ -178,7 +178,7 @@ erDiagram
 * `CREATE INDEX idx_animales_destete_pendiente ON animales (fecha_nacimiento) WHERE estado = 'ACTIVE' AND fecha_destete IS NULL;` (para `WeaningAlertScheduler` a los 75 días).
 * `CREATE UNIQUE INDEX uq_animales_rancho_chip ON animales (rancho_id, chip_siniiga) WHERE chip_siniiga IS NOT NULL;`
 * `CREATE INDEX idx_pesajes_animal_fecha ON pesajes (animal_id, fecha DESC);`
-* `CREATE INDEX idx_partos_rancho_fecha ON partos (rancho_id, fecha_nacimiento DESC);`
+* `CREATE INDEX idx_partos_rancho_fecha ON partos (rancho_id, fecha DESC);`
 
 ---
 

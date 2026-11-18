@@ -56,7 +56,8 @@ SELECT r.id                                                                     
        COUNT(v.animal_id) FILTER (WHERE v.sexo = 'MALE' AND v.etapa NOT LIKE 'LAMB%')   AS machos,
        COUNT(v.animal_id) FILTER (WHERE v.estado_reproductivo = 'STUD_RAM')         AS sementales,
        COUNT(v.animal_id) FILTER (WHERE NOT EXISTS (
-           SELECT 1 FROM raciones ra WHERE ra.animal_id = v.animal_id))             AS animales_sin_dieta
+           SELECT 1 FROM raciones ra
+           WHERE ra.animal_id = v.animal_id AND ra.fecha_inicio <= CURRENT_DATE))  AS animales_sin_dieta
 FROM ranchos r
 LEFT JOIN v_animal_resumen v ON v.rancho_id = r.id AND v.estado = 'ACTIVE'
 GROUP BY r.id, r.nombre, r.propietario;
@@ -253,7 +254,7 @@ WITH ult AS (
            REGR_INTERCEPT(peso_kg, edad_pesaje) AS ordenada
     FROM ult WHERE n <= 4
     GROUP BY animal_id
-    HAVING COUNT(*) >= 2
+    HAVING COUNT(DISTINCT edad_pesaje) >= 2
 ), c AS (
     SELECT a.id AS animal_id, a.rancho_id AS rancho_id, a.folio_interno, a.sexo AS sexo,
            CURRENT_DATE - a.fecha_nacimiento                                             AS edad_dias,

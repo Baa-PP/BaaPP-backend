@@ -35,6 +35,22 @@ ALTER TABLE animales
 ALTER TABLE partos
     ADD COLUMN actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
+CREATE OR REPLACE FUNCTION actualizar_fecha_modificacion()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.actualizado_en = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_animales_actualizado_en
+    BEFORE UPDATE ON animales
+    FOR EACH ROW EXECUTE FUNCTION actualizar_fecha_modificacion();
+
+CREATE TRIGGER trg_partos_actualizado_en
+    BEFORE UPDATE ON partos
+    FOR EACH ROW EXECUTE FUNCTION actualizar_fecha_modificacion();
+
 -- rancho_id se llena desde el animal antes de volverlo obligatorio,
 -- para que la migración funcione aunque staging ya tenga pesajes.
 ALTER TABLE pesajes ADD COLUMN rancho_id UUID REFERENCES ranchos(id);
