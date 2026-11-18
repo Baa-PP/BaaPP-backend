@@ -1,7 +1,7 @@
 -- V3__reproduccion_salud_alimentacion_finanzas.sql
 -- Empadres, salud, alimentación, competencias y movimientos de dinero.
 -- Convenciones de V1/V2: id UUID generado en el celular (offline), VARCHAR + CHECK
--- en lugar de ENUM, sin borrado físico de animales (las FK a animals son RESTRICT).
+-- en lugar de ENUM, sin borrado físico de animales (las FK a animales son RESTRICT).
 -- Catálogos: id SMALLINT identity con sus valores iniciales.
 
 -- ---------------------------------------------------------------------
@@ -49,21 +49,21 @@ INSERT INTO resultados_competencia (nombre, puntos) VALUES
     ('2do lugar', 60), ('3er lugar', 50), ('Mención honorífica', 30), ('Participó', 10);
 
 -- ---------------------------------------------------------------------
--- Reproducción: empadres (el parto ya vive en birth_events)
+-- Reproducción: empadres (el parto ya vive en partos)
 -- ---------------------------------------------------------------------
 CREATE TABLE empadres (
     id UUID PRIMARY KEY,
-    rancho_id UUID NOT NULL REFERENCES ranches(id),
-    hembra_id UUID NOT NULL REFERENCES animals(id),
-    semental_id UUID REFERENCES animals(id),
+    rancho_id UUID NOT NULL REFERENCES ranchos(id),
+    hembra_id UUID NOT NULL REFERENCES animales(id),
+    semental_id UUID REFERENCES animales(id),
     semental_externo_folio VARCHAR(60),
     metodo_concepcion VARCHAR(10) NOT NULL DEFAULT 'MN' CHECK (metodo_concepcion IN ('MN', 'IA', 'TE')),
     fecha DATE NOT NULL,
     diagnostico VARCHAR(10) CHECK (diagnostico IN ('PREGNANT', 'EMPTY')),
     fecha_diagnostico DATE,
-    birth_event_id UUID UNIQUE REFERENCES birth_events(id),
+    parto_id UUID UNIQUE REFERENCES partos(id),
     cerrado BOOLEAN NOT NULL DEFAULT FALSE,
-    registrado_por_usuario_id UUID REFERENCES users(id),
+    registrado_por_usuario_id UUID REFERENCES usuarios(id),
     creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CHECK (hembra_id <> semental_id),
@@ -82,7 +82,7 @@ CREATE INDEX idx_empadres_abiertos ON empadres (rancho_id) WHERE NOT cerrado;
 -- ---------------------------------------------------------------------
 CREATE TABLE esquemas_vacuna (
     id UUID PRIMARY KEY,
-    rancho_id UUID NOT NULL REFERENCES ranches(id),
+    rancho_id UUID NOT NULL REFERENCES ranchos(id),
     tipo_tratamiento_id SMALLINT NOT NULL REFERENCES tipos_tratamiento(id),
     nombre VARCHAR(120) NOT NULL,
     edad_inicio_dias SMALLINT NOT NULL CHECK (edad_inicio_dias BETWEEN 0 AND 730),
@@ -95,7 +95,7 @@ CREATE TABLE esquemas_vacuna (
 
 CREATE TABLE tratamientos (
     id UUID PRIMARY KEY,
-    rancho_id UUID NOT NULL REFERENCES ranches(id),
+    rancho_id UUID NOT NULL REFERENCES ranchos(id),
     tipo_tratamiento_id SMALLINT NOT NULL REFERENCES tipos_tratamiento(id),
     esquema_vacuna_id UUID REFERENCES esquemas_vacuna(id) ON DELETE SET NULL,
     producto VARCHAR(160) NOT NULL,
@@ -103,7 +103,7 @@ CREATE TABLE tratamientos (
     fecha DATE NOT NULL,
     proxima_fecha DATE CHECK (proxima_fecha > fecha),
     notas VARCHAR(500),
-    registrado_por_usuario_id UUID REFERENCES users(id),
+    registrado_por_usuario_id UUID REFERENCES usuarios(id),
     creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -113,7 +113,7 @@ CREATE INDEX idx_tratamientos_rancho_fecha ON tratamientos (rancho_id, fecha DES
 CREATE TABLE tratamientos_animal (
     id UUID PRIMARY KEY,
     tratamiento_id UUID NOT NULL REFERENCES tratamientos(id) ON DELETE CASCADE,
-    animal_id UUID NOT NULL REFERENCES animals(id),
+    animal_id UUID NOT NULL REFERENCES animales(id),
     dosis_ml NUMERIC(5, 2) CHECK (dosis_ml > 0 AND dosis_ml <= 50),
     observacion VARCHAR(200),
     UNIQUE (tratamiento_id, animal_id)
@@ -126,7 +126,7 @@ CREATE INDEX idx_tratamientos_animal_animal ON tratamientos_animal (animal_id);
 -- ---------------------------------------------------------------------
 CREATE TABLE alimentos (
     id UUID PRIMARY KEY,
-    rancho_id UUID REFERENCES ranches(id),
+    rancho_id UUID REFERENCES ranchos(id),
     tipo_alimento_id SMALLINT NOT NULL REFERENCES tipos_alimento(id),
     marca VARCHAR(80) NOT NULL,
     nombre VARCHAR(120) NOT NULL,
@@ -143,7 +143,7 @@ CREATE TABLE alimentos (
 
 CREATE TABLE raciones (
     id UUID PRIMARY KEY,
-    animal_id UUID NOT NULL REFERENCES animals(id),
+    animal_id UUID NOT NULL REFERENCES animales(id),
     fecha_inicio DATE NOT NULL,
     nota VARCHAR(200),
     creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -162,7 +162,7 @@ CREATE TABLE raciones_alimento (
 
 CREATE TABLE mezclas (
     id UUID PRIMARY KEY,
-    rancho_id UUID NOT NULL REFERENCES ranches(id),
+    rancho_id UUID NOT NULL REFERENCES ranchos(id),
     etapa_productiva_id SMALLINT NOT NULL REFERENCES etapas_productivas(id),
     nombre VARCHAR(80) NOT NULL,
     actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -192,7 +192,7 @@ CREATE TABLE eventos_competencia (
 
 CREATE TABLE participaciones (
     id UUID PRIMARY KEY,
-    animal_id UUID NOT NULL REFERENCES animals(id),
+    animal_id UUID NOT NULL REFERENCES animales(id),
     evento_competencia_id UUID NOT NULL REFERENCES eventos_competencia(id),
     resultado_competencia_id SMALLINT NOT NULL REFERENCES resultados_competencia(id),
     categoria VARCHAR(60) NOT NULL,
@@ -206,13 +206,13 @@ CREATE TABLE participaciones (
 -- ---------------------------------------------------------------------
 CREATE TABLE movimientos (
     id UUID PRIMARY KEY,
-    rancho_id UUID NOT NULL REFERENCES ranches(id),
-    animal_id UUID REFERENCES animals(id),
+    rancho_id UUID NOT NULL REFERENCES ranchos(id),
+    animal_id UUID REFERENCES animales(id),
     tipo VARCHAR(10) NOT NULL CHECK (tipo IN ('INCOME', 'EXPENSE')),
     concepto VARCHAR(160) NOT NULL,
     monto NUMERIC(12, 2) NOT NULL CHECK (monto > 0 AND monto < 10000000),
     fecha DATE NOT NULL,
-    registrado_por_usuario_id UUID REFERENCES users(id),
+    registrado_por_usuario_id UUID REFERENCES usuarios(id),
     creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

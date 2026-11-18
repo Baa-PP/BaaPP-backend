@@ -16,25 +16,25 @@ El archivo `BaaPP-backend/src/main/resources/db/migration/V1__init_schema.sql` *
 
 | Archivo | Contenido | Estado |
 | :--- | :--- | :--- |
-| `V1__init_schema.sql` | 7 tablas base | Aplicada en RDS |
-| `V2__mvp_gaps_and_indexes.sql` | §4: asociaciones, columnas faltantes de `animals` / `birth_events` / `weight_measurements` y 7 índices | Nueva |
+| `V1__init_schema.sql` | 7 tablas base, en español | Reescrita: requiere reiniciar la base de staging |
+| `V2__mvp_gaps_and_indexes.sql` | §4: asociaciones, columnas faltantes de `animales` / `partos` / `pesajes` y 7 índices | Nueva |
 | `V3__reproduccion_salud_alimentacion_finanzas.sql` | 4 catálogos + 12 tablas (§8): empadres, salud, alimentación, competencias y movimientos | Nueva |
 | `V4__vistas.sql` | 24 vistas de lectura (§9). Para cambiarlas, una migración nueva con `CREATE OR REPLACE VIEW` | Nueva |
 
-> V2 llena `weight_measurements.ranch_id` desde `animals` antes de ponerle `NOT NULL`, así que funciona aunque staging ya tenga pesajes. Probado en PostgreSQL (Neon) con y sin pesajes previos.
-> Las tablas nuevas de V3 van con nombres en **español**; las de V1/V2 conservan sus nombres en inglés porque V1 ya está aplicada. Los **valores** de los `CHECK` siguen en inglés (`PREGNANT`, `HERD`, `INCOME`…) igual que los enums de Kotlin.
+> V2 llena `pesajes.rancho_id` desde `animales` antes de ponerle `NOT NULL`, así que funciona aunque staging ya tenga pesajes. Probado en PostgreSQL (Neon) con y sin pesajes previos.
+> **Todo el esquema está en español** (tablas y columnas). V1 se reescribió en español de común acuerdo con el equipo: la base de staging en RDS se reinicia para que Flyway la aplique desde cero sin error de checksum. Los **valores** de los `CHECK` siguen en inglés (`FEMALE`, `ACTIVE`, `PREGNANT`, `HERD`, `INCOME`…) porque son los enums de Kotlin.
 
 ### Inventario de lo ya construido en `V1` (7 tablas)
 
 | Tabla | Propósito actual | Observación / Estado |
 | :--- | :--- | :--- |
-| `ranches` | Catálogo de ranchos (`weaning_days_target` = 75) | Falta vínculo con Asociación. |
-| `users` | Cuentas `OWNER`, `WORKER_BRANCH`, `VET_TECHNICIAN`, `ASSOCIATION_SUPERUSER` + `branch_permissions` (`JSONB`) | Falta relación multi-rancho para Asociación/Técnico. |
-| `animals` | Ficha individual con dimensiones ortogonales (`sex`, `life_stage`, `reproductive_status`, `status`), pedigrí (`sire_id`, `dam_id`), mortalidad | Faltan `entry_reason`, `criador_name`, `photo_s3_key`, `birth_event_id`, e índices. |
-| `birth_events` | Eventos de parto con foto obligatoria (`evidence_photo_s3_key`) y conteo `live_born_count` / `stillborn_count` | Falta `parturition_type`, `conception_method` y estado de bloqueo/auditoría. |
-| `birth_audit_logs` | Bitácora inmutable (`previous_state`, `new_state` en `JSONB`, foto y motivo) para correcciones de Asociación/Técnico | Completa para MVP. |
-| `weight_measurements` | Pesajes (`BIRTH`, `WEANING`, `DAY_120`, `DAY_150`, `EVALUATION`) + `scrotal_circumference_cm` | Falta `ranch_id` e índice por animal/fecha. |
-| `processed_sync_mutations` | Idempotencia de sincronización offline (`mutation_id`) | Completa para MVP. |
+| `ranchos` | Catálogo de ranchos (`dias_meta_destete` = 75) | Falta vínculo con Asociación. |
+| `usuarios` | Cuentas `OWNER`, `WORKER_BRANCH`, `VET_TECHNICIAN`, `ASSOCIATION_SUPERUSER` + `permisos` (`JSONB`) | Falta relación multi-rancho para Asociación/Técnico. |
+| `animales` | Ficha individual con dimensiones ortogonales (`sexo`, `etapa_vida`, `estado_reproductivo`, `estado`), pedigrí (`padre_id`, `madre_id`), mortalidad | Faltan `motivo_alta`, `criador`, `foto_s3_key`, `parto_id`, e índices. |
+| `partos` | Eventos de parto con foto obligatoria (`foto_evidencia_s3_key`) y conteo `nacidos_vivos` / `nacidos_muertos` | Falta `tipo_parto`, `metodo_concepcion` y estado de bloqueo/auditoría. |
+| `auditorias_parto` | Bitácora inmutable (`estado_anterior`, `estado_nuevo` en `JSONB`, foto y motivo) para correcciones de Asociación/Técnico | Completa para MVP. |
+| `pesajes` | Pesajes (`BIRTH`, `WEANING`, `DAY_120`, `DAY_150`, `EVALUATION`) + `circunferencia_escrotal_cm` | Falta `rancho_id` e índice por animal/fecha. |
+| `mutaciones_procesadas` | Idempotencia de sincronización offline (`mutacion_id`) | Completa para MVP. |
 
 ---
 
@@ -42,94 +42,94 @@ El archivo `BaaPP-backend/src/main/resources/db/migration/V1__init_schema.sql` *
 
 ```mermaid
 erDiagram
-    associations ||--o{ association_ranches : agrupa
-    ranches ||--o{ association_ranches : afiliado_a
-    associations ||--o{ users : tiene_superusuarios
-    ranches ||--o{ users : tiene_dueno_y_ramas
-    ranches ||--o{ animals : posee
-    ranches ||--o{ birth_events : registra
-    ranches ||--o{ processed_sync_mutations : deduplica
+    asociaciones ||--o{ asociaciones_ranchos : agrupa
+    ranchos ||--o{ asociaciones_ranchos : afiliado_a
+    asociaciones ||--o{ usuarios : tiene_superusuarios
+    ranchos ||--o{ usuarios : tiene_dueno_y_ramas
+    ranchos ||--o{ animales : posee
+    ranchos ||--o{ partos : registra
+    ranchos ||--o{ mutaciones_procesadas : deduplica
 
-    animals ||--o{ animals : "sire_id / dam_id"
-    animals ||--o{ birth_events : "dam_id / sire_id"
-    birth_events ||--o{ animals : "birth_event_id (crias)"
-    birth_events ||--o{ birth_audit_logs : audita
-    users ||--o{ birth_events : registra
-    users ||--o{ birth_audit_logs : aprueba
-    animals ||--o{ weight_measurements : registra_pesos
+    animales ||--o{ animales : "padre_id / madre_id"
+    animales ||--o{ partos : "madre_id / padre_id"
+    partos ||--o{ animales : "parto_id (crias)"
+    partos ||--o{ auditorias_parto : audita
+    usuarios ||--o{ partos : registra
+    usuarios ||--o{ auditorias_parto : aprueba
+    animales ||--o{ pesajes : registra_pesos
 
-    associations {
+    asociaciones {
         uuid id PK
-        varchar name
-        varchar scope "STATE | NATIONAL"
+        varchar nombre
+        varchar alcance "STATE | NATIONAL"
     }
-    association_ranches {
-        uuid association_id PK,FK
-        uuid ranch_id PK,FK
+    asociaciones_ranchos {
+        uuid asociacion_id PK,FK
+        uuid rancho_id PK,FK
     }
-    ranches {
+    ranchos {
         uuid id PK
-        varchar name
-        text address
-        varchar owner_name
-        int weaning_days_target "default 75"
+        varchar nombre
+        text direccion
+        varchar propietario
+        int dias_meta_destete "default 75"
     }
-    users {
+    usuarios {
         uuid id PK
-        uuid ranch_id FK "nullable para superuser"
-        uuid association_id FK "V2"
-        varchar username UK
-        varchar password_hash
-        varchar role
-        jsonb branch_permissions
+        uuid rancho_id FK "nullable para superuser"
+        uuid asociacion_id FK "V2"
+        varchar usuario UK
+        varchar contrasena_hash
+        varchar rol
+        jsonb permisos
     }
-    animals {
+    animales {
         uuid id PK
-        uuid ranch_id FK
-        uuid birth_event_id FK "V2"
+        uuid rancho_id FK
+        uuid parto_id FK "V2"
         varchar folio_interno
-        varchar siniiga_chip
+        varchar chip_siniiga
         varchar registro_uno
         varchar adn
-        varchar entry_reason "V2"
-        varchar criador_name "V2"
-        text photo_s3_key "V2"
-        varchar sex
-        varchar life_stage
-        varchar reproductive_status
-        varchar status "ACTIVE | SOLD | DECEASED"
-        uuid sire_id FK
-        uuid dam_id FK
+        varchar motivo_alta "V2"
+        varchar criador "V2"
+        text foto_s3_key "V2"
+        varchar sexo
+        varchar etapa_vida
+        varchar estado_reproductivo
+        varchar estado "ACTIVE | SOLD | DECEASED"
+        uuid padre_id FK
+        uuid madre_id FK
     }
-    birth_events {
+    partos {
         uuid id PK
-        uuid ranch_id FK
-        uuid dam_id FK
-        uuid sire_id FK
-        date birth_date
-        int live_born_count
-        int stillborn_count
-        text evidence_photo_s3_key
-        uuid registered_by_user_id FK
+        uuid rancho_id FK
+        uuid madre_id FK
+        uuid padre_id FK
+        date fecha
+        int nacidos_vivos
+        int nacidos_muertos
+        text foto_evidencia_s3_key
+        uuid registrado_por_usuario_id FK
     }
-    birth_audit_logs {
+    auditorias_parto {
         uuid id PK
-        uuid birth_event_id FK
-        uuid ranch_id FK
-        uuid approved_by_user_id FK
-        jsonb previous_state
-        jsonb new_state
-        text evidence_photo_s3_key
-        text reason
+        uuid parto_id FK
+        uuid rancho_id FK
+        uuid aprobado_por_usuario_id FK
+        jsonb estado_anterior
+        jsonb estado_nuevo
+        text foto_evidencia_s3_key
+        text motivo
     }
-    weight_measurements {
+    pesajes {
         uuid id PK
-        uuid ranch_id FK "V2"
+        uuid rancho_id FK "V2"
         uuid animal_id FK
-        varchar milestone
-        numeric weight_kg
-        numeric scrotal_circumference_cm
-        date measured_at
+        varchar hito
+        numeric peso_kg
+        numeric circunferencia_escrotal_cm
+        date fecha
     }
 ```
 
@@ -137,19 +137,19 @@ erDiagram
 
 ## 3. Decisiones de Diseño Clave
 
-1. **UUIDv7 vs. Identificadores de Negocio:** Todas las tablas usan `id UUID PRIMARY KEY` generable offline en el móvil (`BaaPP-app`). El folio de corral (`folio_interno`, ej. `79`), el arete SINIIGA (`siniiga_chip`, prefijo `484...`) y el registro (`registro_uno`, ej. `268309MM-RP`) son columnas de negocio separadas con unicidad compuesta `UNIQUE (ranch_id, folio_interno)`, permitiendo reemplazar aretes perdidos sin romper llaves foráneas.
-2. **Dimensiones Ortogonales en `animals`:** Nunca mezclar sexo, etapa y estado fisiológico en un solo campo. Se mantienen separados:
-   - `sex`: `FEMALE`, `MALE`
-   - `life_stage`: `LAMB_LACTATING`, `LAMB_FATTENING`, `EWE_REPLACEMENT`, `ADULT`
-   - `reproductive_status`: `EMPTY`, `PREGNANT`, `LACTATING`, `STUD_RAM`
-   - `status`: `ACTIVE`, `SOLD`, `DECEASED`
+1. **UUIDv7 vs. Identificadores de Negocio:** Todas las tablas usan `id UUID PRIMARY KEY` generable offline en el móvil (`BaaPP-app`). El folio de corral (`folio_interno`, ej. `79`), el arete SINIIGA (`chip_siniiga`, prefijo `484...`) y el registro (`registro_uno`, ej. `268309MM-RP`) son columnas de negocio separadas con unicidad compuesta `UNIQUE (rancho_id, folio_interno)`, permitiendo reemplazar aretes perdidos sin romper llaves foráneas.
+2. **Dimensiones Ortogonales en `animales`:** Nunca mezclar sexo, etapa y estado fisiológico en un solo campo. Se mantienen separados:
+   - `sexo`: `FEMALE`, `MALE`
+   - `etapa_vida`: `LAMB_LACTATING`, `LAMB_FATTENING`, `EWE_REPLACEMENT`, `ADULT`
+   - `estado_reproductivo`: `EMPTY`, `PREGNANT`, `LACTATING`, `STUD_RAM`
+   - `estado`: `ACTIVE`, `SOLD`, `DECEASED`
 3. **`VARCHAR + CHECK` en lugar de `CREATE TYPE AS ENUM`:** Consistente con `V1`, evita migraciones complejas en PostgreSQL al agregar valores futuros.
-4. **Cero Borrado Físico (`DELETE` prohibido en `animals`):** Un animal fallecido pasa a `status = 'DECEASED'` con `mortality_date`, `mortality_cause` y `life_stage_at_death`. Así se preservan indicadores de mortalidad y la detección de vientres improductivos.
+4. **Cero Borrado Físico (`DELETE` prohibido en `animales`):** Un animal fallecido pasa a `estado = 'DECEASED'` con `fecha_muerte`, `causa_muerte` y `etapa_al_morir`. Así se preservan indicadores de mortalidad y la detección de vientres improductivos.
 5. **Regla Anti-Fraude de 30 Días e Inmutabilidad:**
-   - Todo parto en `birth_events` exige `evidence_photo_s3_key` no vacío y valida `0 <= today - birth_date <= 30` días.
-   - Productores (`OWNER`, `WORKER_BRANCH`) no tienen permiso de `UPDATE/DELETE` sobre `birth_events`.
-   - Correcciones posteriores o altas fuera de plazo las ejecuta exclusivamente `ASSOCIATION_SUPERUSER` o `VET_TECHNICIAN`, dejando registro obligatorio en `birth_audit_logs`.
-6. **Genealogía Bidireccional (`WITH RECURSIVE`):** `sire_id` y `dam_id` apuntan a `animals(id)` (con respaldo de texto `external_sire_folio` / `external_dam_folio` para progenitores externos). Permite navegar Madre ↔ Crías ↔ Semental y resolver árboles de 3–4 generaciones en una sola consulta recursiva.
+   - Todo parto en `partos` exige `foto_evidencia_s3_key` no vacío y valida `0 <= today - fecha_nacimiento <= 30` días.
+   - Productores (`OWNER`, `WORKER_BRANCH`) no tienen permiso de `UPDATE/DELETE` sobre `partos`.
+   - Correcciones posteriores o altas fuera de plazo las ejecuta exclusivamente `ASSOCIATION_SUPERUSER` o `VET_TECHNICIAN`, dejando registro obligatorio en `auditorias_parto`.
+6. **Genealogía Bidireccional (`WITH RECURSIVE`):** `padre_id` y `madre_id` apuntan a `animales(id)` (con respaldo de texto `folio_padre_externo` / `folio_madre_externo` para progenitores externos). Permite navegar Madre ↔ Crías ↔ Semental y resolver árboles de 3–4 generaciones en una sola consulta recursiva.
 7. **Campos Derivados NO Almacenados:** Edad en meses/días, ganancia diaria de peso (GDP), tasa de preñez, tasa de partos, prolificidad, intervalo entre ciclos (275 días) y días de engorda se calculan en dominio (`ZootechnicalCalculator`) o en la exportación Excel (`FastExcelSabanaExporter`), nunca como columnas persistidas que puedan desincronizarse.
 
 ---
@@ -159,26 +159,26 @@ erDiagram
 `V1` cubre la base, pero presenta **huecos concretos para operar Fase 1** que deben resolverse en `V2__mvp_gaps_and_indexes.sql`:
 
 ### A. Multi-tenancy de Asociación (faltante en `V1`, referenciado en `RanchContextInterceptor`)
-* **`associations`**: `id UUID PK`, `name VARCHAR(150) NOT NULL`, `code VARCHAR(40) UNIQUE`, `created_at TIMESTAMPTZ`.
-* **`association_ranches`**: `association_id UUID FK`, `ranch_id UUID FK`, `joined_at TIMESTAMPTZ`, `PRIMARY KEY (association_id, ranch_id)`.
-* **`users.association_id`**: `UUID REFERENCES associations(id)` (nullable; usado por `ASSOCIATION_SUPERUSER` y `VET_TECHNICIAN` para autorizar el header `X-Active-Ranch-Id`).
+* **`asociaciones`**: `id UUID PK`, `nombre VARCHAR(150) NOT NULL`, `clave VARCHAR(40) UNIQUE`, `creado_en TIMESTAMPTZ`.
+* **`asociaciones_ranchos`**: `asociacion_id UUID FK`, `rancho_id UUID FK`, `afiliado_en TIMESTAMPTZ`, `PRIMARY KEY (asociacion_id, rancho_id)`.
+* **`usuarios.asociacion_id`**: `UUID REFERENCES asociaciones(id)` (nullable; usado por `ASSOCIATION_SUPERUSER` y `VET_TECHNICIAN` para autorizar el header `X-Active-Ranch-Id`).
 
-### B. Ficha Individual (`animals`) y Conciliación de Partos (`birth_events`)
-* **`animals.entry_reason`**: `VARCHAR(20) NOT NULL DEFAULT 'BIRTH' CHECK (entry_reason IN ('BIRTH', 'PURCHASE', 'REENTRY', 'TRANSFER', 'OTHER'))` — requerido por la Reseña MVP (Sesión 2, p. 14).
-* **`animals.criador_name`**: `VARCHAR(150)` — distingue *Criador* de *Propietario actual* en el certificado rosa/azul (Sesión 2, p. 8 y 17).
-* **`animals.photo_s3_key`**: `TEXT` — fotografía del ejemplar en su ficha.
-* **`animals.birth_event_id`**: `UUID REFERENCES birth_events(id)` — vincula las crías creadas con su evento de parto para conciliar solicitudes de chips SINIIGA a los 5 meses (`live_born_count` menos crías con `status = 'DECEASED'`).
-* **`animals.updated_at`** y **`birth_events.updated_at`**: `TIMESTAMPTZ NOT NULL DEFAULT NOW()` — necesario para sincronización incremental (pull) en móvil.
-* **`weight_measurements.ranch_id`**: `UUID NOT NULL REFERENCES ranches(id)` — evita joins innecesarios al validar aislamiento por rancho y al sincronizar.
+### B. Ficha Individual (`animales`) y Conciliación de Partos (`partos`)
+* **`animales.motivo_alta`**: `VARCHAR(20) NOT NULL DEFAULT 'BIRTH' CHECK (motivo_alta IN ('BIRTH', 'PURCHASE', 'REENTRY', 'TRANSFER', 'OTHER'))` — requerido por la Reseña MVP (Sesión 2, p. 14).
+* **`animales.criador`**: `VARCHAR(150)` — distingue *Criador* de *Propietario actual* en el certificado rosa/azul (Sesión 2, p. 8 y 17).
+* **`animales.foto_s3_key`**: `TEXT` — fotografía del ejemplar en su ficha.
+* **`animales.parto_id`**: `UUID REFERENCES partos(id)` — vincula las crías creadas con su evento de parto para conciliar solicitudes de chips SINIIGA a los 5 meses (`nacidos_vivos` menos crías con `estado = 'DECEASED'`).
+* **`animales.actualizado_en`** y **`partos.actualizado_en`**: `TIMESTAMPTZ NOT NULL DEFAULT NOW()` — necesario para sincronización incremental (pull) en móvil.
+* **`pesajes.rancho_id`**: `UUID NOT NULL REFERENCES ranchos(id)` — evita joins innecesarios al validar aislamiento por rancho y al sincronizar.
 
 ### C. Índices de Rendimiento (ausentes en `V1`)
-* `CREATE INDEX idx_animals_ranch_status ON animals (ranch_id, status);`
-* `CREATE INDEX idx_animals_sire ON animals (sire_id) WHERE sire_id IS NOT NULL;`
-* `CREATE INDEX idx_animals_dam ON animals (dam_id) WHERE dam_id IS NOT NULL;`
-* `CREATE INDEX idx_animals_weaning_pending ON animals (birth_date) WHERE status = 'ACTIVE' AND weaning_date IS NULL;` (para `WeaningAlertScheduler` a los 75 días).
-* `CREATE UNIQUE INDEX uq_animals_ranch_siniiga ON animals (ranch_id, siniiga_chip) WHERE siniiga_chip IS NOT NULL;`
-* `CREATE INDEX idx_weights_animal_date ON weight_measurements (animal_id, measured_at DESC);`
-* `CREATE INDEX idx_births_ranch_date ON birth_events (ranch_id, birth_date DESC);`
+* `CREATE INDEX idx_animales_rancho_estado ON animales (rancho_id, estado);`
+* `CREATE INDEX idx_animales_padre ON animales (padre_id) WHERE padre_id IS NOT NULL;`
+* `CREATE INDEX idx_animales_madre ON animales (madre_id) WHERE madre_id IS NOT NULL;`
+* `CREATE INDEX idx_animales_destete_pendiente ON animales (fecha_nacimiento) WHERE estado = 'ACTIVE' AND fecha_destete IS NULL;` (para `WeaningAlertScheduler` a los 75 días).
+* `CREATE UNIQUE INDEX uq_animales_rancho_chip ON animales (rancho_id, chip_siniiga) WHERE chip_siniiga IS NOT NULL;`
+* `CREATE INDEX idx_pesajes_animal_fecha ON pesajes (animal_id, fecha DESC);`
+* `CREATE INDEX idx_partos_rancho_fecha ON partos (rancho_id, fecha_nacimiento DESC);`
 
 ---
 
@@ -188,29 +188,29 @@ Basado en `SABANA OCT 2026 DORPER.xlsx` (Sesión 2, pp. 12–13):
 
 | Col | Encabezado Sábana | Origen en Base de Datos / Cálculo |
 | :---: | :--- | :--- |
-| **A** | `folio` | `animals.folio_interno` |
-| **B** | `adn` | `animals.adn` |
-| **C** | `CHIP` (SINIIGA) | `animals.siniiga_chip` |
-| **D** | `FECHA NACIMIENTO` | `animals.birth_date` |
-| **E** | `FECHA DESTETE` | `animals.weaning_date` |
-| **F** | `EDAD MESES` | **Derivado:** `(fecha_corte - birth_date) / 30.0` |
-| **G** | `EDAD DIAS` | **Derivado:** `fecha_corte - birth_date` |
-| **H** | `PESO NACIMIENTO` | `weight_measurements.weight_kg` (`milestone = 'BIRTH'`) |
-| **I** | `PESO 120 DIAS` | `weight_measurements.weight_kg` (`milestone = 'DAY_120'`) |
-| **J** | `PESO 150 DIAS` | `weight_measurements.weight_kg` (`milestone = 'DAY_150'`) |
-| **K** | `PESO A LA EVALUACION` | `weight_measurements.weight_kg` (`milestone = 'EVALUATION'`) |
-| **L** | `CIRCUNFERENCIA` | `weight_measurements.scrotal_circumference_cm` (machos) |
-| **M** | `PESO DESTETE` | `weight_measurements.weight_kg` (`milestone = 'WEANING'`) |
-| **N** | `TIPO DESTETE` | `animals.parturition_type` *(o campo separado si difiere por mortalidad previa al destete)* |
-| **O** | `PADRE` | `sire.folio_interno` o `animals.external_sire_folio` |
+| **A** | `folio` | `animales.folio_interno` |
+| **B** | `adn` | `animales.adn` |
+| **C** | `CHIP` (SINIIGA) | `animales.chip_siniiga` |
+| **D** | `FECHA NACIMIENTO` | `animales.fecha_nacimiento` |
+| **E** | `FECHA DESTETE` | `animales.fecha_destete` |
+| **F** | `EDAD MESES` | **Derivado:** `(fecha_corte - fecha_nacimiento) / 30.0` |
+| **G** | `EDAD DIAS` | **Derivado:** `fecha_corte - fecha_nacimiento` |
+| **H** | `PESO NACIMIENTO` | `pesajes.peso_kg` (`hito = 'BIRTH'`) |
+| **I** | `PESO 120 DIAS` | `pesajes.peso_kg` (`hito = 'DAY_120'`) |
+| **J** | `PESO 150 DIAS` | `pesajes.peso_kg` (`hito = 'DAY_150'`) |
+| **K** | `PESO A LA EVALUACION` | `pesajes.peso_kg` (`hito = 'EVALUATION'`) |
+| **L** | `CIRCUNFERENCIA` | `pesajes.circunferencia_escrotal_cm` (machos) |
+| **M** | `PESO DESTETE` | `pesajes.peso_kg` (`hito = 'WEANING'`) |
+| **N** | `TIPO DESTETE` | `animales.tipo_parto` *(o campo separado si difiere por mortalidad previa al destete)* |
+| **O** | `PADRE` | `sire.folio_interno` o `animales.folio_padre_externo` |
 | **P** | `FOLIO PADRE` (UNO) | `sire.registro_uno` *(pendiente validar si padre externo requiere `external_sire_registro_uno`)* |
-| **Q** | `MADRE` | `dam.folio_interno` o `animals.external_dam_folio` |
+| **Q** | `MADRE` | `dam.folio_interno` o `animales.folio_madre_externo` |
 | **R** | `FOLIO MADRE` (UNO) | `dam.registro_uno` |
-| **S** | `RAZA` | `animals.breed` |
-| **T** | `TIPO DE PARTO` | `animals.parturition_type` (`SIMPLE`, `TWIN`, `TRIPLET`, `QUADRUPLET`, `QUINTUPLET`) |
-| **U** | `CONCEPCION` | `animals.conception_method` (`MN`, `IA`, `TE`) |
-| **V** | `COLOR` | `animals.color` |
-| **W** | `SEXO` | `animals.sex` (`FEMALE` → HEMBRA, `MALE` → MACHO) |
+| **S** | `RAZA` | `animales.raza` |
+| **T** | `TIPO DE PARTO` | `animales.tipo_parto` (`SIMPLE`, `TWIN`, `TRIPLET`, `QUADRUPLET`, `QUINTUPLET`) |
+| **U** | `CONCEPCION` | `animales.metodo_concepcion` (`MN`, `IA`, `TE`) |
+| **V** | `COLOR` | `animales.color` |
+| **W** | `SEXO` | `animales.sexo` (`FEMALE` → HEMBRA, `MALE` → MACHO) |
 | **X** | `(=AHORA())` | **Derivado:** fecha de corte de generación del `.xlsx` |
 
 ---
@@ -218,7 +218,7 @@ Basado en `SABANA OCT 2026 DORPER.xlsx` (Sesión 2, pp. 12–13):
 ## 6. Paridad Offline en SQLite (`BaaPP-app` / SQLDelight)
 
 El archivo `BaaPP-app/shared/src/commonMain/sqldelight/com/agrotech/oviapp/db/OviAppDatabase.sq` actualmente solo tiene `local_animals` (incompleta) y `pending_sync_events`. Para soportar captura y lectura offline en Fase 1 debe ampliarse con:
-1. Completar `local_animals` con `adn`, `parturition_type`, `conception_method`, `external_sire_folio`, `external_dam_folio`, `entry_reason`, `criador_name`, `photo_s3_key`, `birth_event_id`, `mortality_date`, `mortality_cause`, `updated_at`.
+1. Completar `local_animals` con `adn`, `tipo_parto`, `metodo_concepcion`, `folio_padre_externo`, `folio_madre_externo`, `motivo_alta`, `criador`, `foto_s3_key`, `parto_id`, `fecha_muerte`, `causa_muerte`, `actualizado_en`.
 2. Agregar **`local_birth_events`** y **`local_weight_measurements`** (espejo mínimo de PostgreSQL) para consultar historial y ejecutar validaciones locales antes de que `WorkManager` vacíe `pending_sync_events` hacia `POST /api/v1/sync/batch`.
 
 ---
@@ -239,26 +239,26 @@ Siguiendo la hoja de ruta de los documentos de arquitectura y requerimientos, es
 
 ```mermaid
 erDiagram
-    ranches ||--o{ empadres : registra
-    animals ||--o{ empadres : "hembra / semental"
-    birth_events |o--o| empadres : "resulta en"
-    ranches ||--o{ esquemas_vacuna : calendario
+    ranchos ||--o{ empadres : registra
+    animales ||--o{ empadres : "hembra / semental"
+    partos |o--o| empadres : "resulta en"
+    ranchos ||--o{ esquemas_vacuna : calendario
     tipos_tratamiento ||--o{ esquemas_vacuna : tipo
     tipos_tratamiento ||--o{ tratamientos : tipo
     esquemas_vacuna |o--o{ tratamientos : cumple
     tratamientos ||--o{ tratamientos_animal : "se aplica a"
-    animals ||--o{ tratamientos_animal : recibe
+    animales ||--o{ tratamientos_animal : recibe
     tipos_alimento ||--o{ alimentos : tipo
-    animals ||--o{ raciones : come
+    animales ||--o{ raciones : come
     raciones ||--o{ raciones_alimento : contiene
     alimentos ||--o{ raciones_alimento : "kg por día"
     etapas_productivas ||--o{ mezclas : etapa
     mezclas ||--o{ mezclas_ingrediente : contiene
     alimentos ||--o{ mezclas_ingrediente : porcentaje
     eventos_competencia ||--o{ participaciones : tiene
-    animals ||--o{ participaciones : participa
+    animales ||--o{ participaciones : participa
     resultados_competencia ||--o{ participaciones : resultado
-    ranches ||--o{ movimientos : registra
+    ranchos ||--o{ movimientos : registra
 ```
 
 | Tabla | Tipo | Qué guarda | Reglas (`CHECK` / `UNIQUE`) |
@@ -280,7 +280,7 @@ erDiagram
 | `participaciones` | M:N | Animal × evento: categoría, resultado y foto | una por animal, evento y categoría |
 | `movimientos` | Entidad | Ventas (`INCOME`) y gastos (`EXPENSE`) | monto > 0 |
 
-Las FK hacia `animals` no tienen `ON DELETE` (RESTRICT): un animal nunca se borra físicamente (§3.4). Los renglones hijos de `tratamientos`, `raciones` y `mezclas` sí se borran en cascada con su padre.
+Las FK hacia `animales` no tienen `ON DELETE` (RESTRICT): un animal nunca se borra físicamente (§3.4). Los renglones hijos de `tratamientos`, `raciones` y `mezclas` sí se borran en cascada con su padre.
 
 ---
 
@@ -315,4 +315,4 @@ Cada pantalla pide su vista con un filtro sencillo (`WHERE rancho_id = :rancho`,
 | `v_desempeno_semental` | Selección de sementales | LATERAL |
 | `v_sabana` | Sábana oficial de 24 columnas (§5) | LATERAL, `ARRAY_AGG FILTER` |
 
-> **Limitación conocida:** V1 no guarda la fecha de venta, así que `v_tamano_rebano_mensual` solo cuenta a los vendidos mientras siguen activos. Si se necesita, agregar `animals.sale_date` en una migración futura.
+> **Limitación conocida:** V1 no guarda la fecha de venta, así que `v_tamano_rebano_mensual` solo cuenta a los vendidos mientras siguen activos. Si se necesita, agregar `animales.sale_date` en una migración futura.

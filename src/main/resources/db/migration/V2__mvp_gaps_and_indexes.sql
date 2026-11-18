@@ -1,57 +1,58 @@
 -- V2__mvp_gaps_and_indexes.sql: huecos de Fase 1 (MVP) documentados en DATABASE_DESIGN.md §4
+-- Los valores de los CHECK siguen en inglés porque son los enums de Kotlin.
 
 -- ---------------------------------------------------------------------
 -- A. Multi-tenancy de Asociación (usado por RanchContextInterceptor)
 -- ---------------------------------------------------------------------
-CREATE TABLE associations (
+CREATE TABLE asociaciones (
     id UUID PRIMARY KEY,
-    name VARCHAR(150) NOT NULL,
-    code VARCHAR(40) UNIQUE,
-    scope VARCHAR(20) NOT NULL DEFAULT 'STATE' CHECK (scope IN ('STATE', 'NATIONAL')),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    nombre VARCHAR(150) NOT NULL,
+    clave VARCHAR(40) UNIQUE,
+    alcance VARCHAR(20) NOT NULL DEFAULT 'STATE' CHECK (alcance IN ('STATE', 'NATIONAL')),
+    creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE association_ranches (
-    association_id UUID NOT NULL REFERENCES associations(id),
-    ranch_id UUID NOT NULL REFERENCES ranches(id),
-    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (association_id, ranch_id)
+CREATE TABLE asociaciones_ranchos (
+    asociacion_id UUID NOT NULL REFERENCES asociaciones(id),
+    rancho_id UUID NOT NULL REFERENCES ranchos(id),
+    afiliado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (asociacion_id, rancho_id)
 );
 
-ALTER TABLE users ADD COLUMN association_id UUID REFERENCES associations(id);
+ALTER TABLE usuarios ADD COLUMN asociacion_id UUID REFERENCES asociaciones(id);
 
 -- ---------------------------------------------------------------------
--- B. Ficha individual (animals) y conciliación de partos (birth_events)
+-- B. Ficha individual (animales) y conciliación de partos
 -- ---------------------------------------------------------------------
-ALTER TABLE animals
-    ADD COLUMN entry_reason VARCHAR(20) NOT NULL DEFAULT 'BIRTH'
-        CHECK (entry_reason IN ('BIRTH', 'PURCHASE', 'REENTRY', 'TRANSFER', 'OTHER')),
-    ADD COLUMN criador_name VARCHAR(150),
-    ADD COLUMN photo_s3_key TEXT,
-    ADD COLUMN birth_event_id UUID REFERENCES birth_events(id),
-    ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE animales
+    ADD COLUMN motivo_alta VARCHAR(20) NOT NULL DEFAULT 'BIRTH'
+        CHECK (motivo_alta IN ('BIRTH', 'PURCHASE', 'REENTRY', 'TRANSFER', 'OTHER')),
+    ADD COLUMN criador VARCHAR(150),
+    ADD COLUMN foto_s3_key TEXT,
+    ADD COLUMN parto_id UUID REFERENCES partos(id),
+    ADD COLUMN actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
-ALTER TABLE birth_events
-    ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE partos
+    ADD COLUMN actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
--- ranch_id se llena desde el animal antes de volverlo obligatorio,
+-- rancho_id se llena desde el animal antes de volverlo obligatorio,
 -- para que la migración funcione aunque staging ya tenga pesajes.
-ALTER TABLE weight_measurements ADD COLUMN ranch_id UUID REFERENCES ranches(id);
+ALTER TABLE pesajes ADD COLUMN rancho_id UUID REFERENCES ranchos(id);
 
-UPDATE weight_measurements w
-SET ranch_id = a.ranch_id
-FROM animals a
-WHERE a.id = w.animal_id;
+UPDATE pesajes p
+SET rancho_id = a.rancho_id
+FROM animales a
+WHERE a.id = p.animal_id;
 
-ALTER TABLE weight_measurements ALTER COLUMN ranch_id SET NOT NULL;
+ALTER TABLE pesajes ALTER COLUMN rancho_id SET NOT NULL;
 
 -- ---------------------------------------------------------------------
 -- C. Índices de rendimiento
 -- ---------------------------------------------------------------------
-CREATE INDEX idx_animals_ranch_status ON animals (ranch_id, status);
-CREATE INDEX idx_animals_sire ON animals (sire_id) WHERE sire_id IS NOT NULL;
-CREATE INDEX idx_animals_dam ON animals (dam_id) WHERE dam_id IS NOT NULL;
-CREATE INDEX idx_animals_weaning_pending ON animals (birth_date) WHERE status = 'ACTIVE' AND weaning_date IS NULL;
-CREATE UNIQUE INDEX uq_animals_ranch_siniiga ON animals (ranch_id, siniiga_chip) WHERE siniiga_chip IS NOT NULL;
-CREATE INDEX idx_weights_animal_date ON weight_measurements (animal_id, measured_at DESC);
-CREATE INDEX idx_births_ranch_date ON birth_events (ranch_id, birth_date DESC);
+CREATE INDEX idx_animales_rancho_estado ON animales (rancho_id, estado);
+CREATE INDEX idx_animales_padre ON animales (padre_id) WHERE padre_id IS NOT NULL;
+CREATE INDEX idx_animales_madre ON animales (madre_id) WHERE madre_id IS NOT NULL;
+CREATE INDEX idx_animales_destete_pendiente ON animales (fecha_nacimiento) WHERE estado = 'ACTIVE' AND fecha_destete IS NULL;
+CREATE UNIQUE INDEX uq_animales_rancho_chip ON animales (rancho_id, chip_siniiga) WHERE chip_siniiga IS NOT NULL;
+CREATE INDEX idx_pesajes_animal_fecha ON pesajes (animal_id, fecha DESC);
+CREATE INDEX idx_partos_rancho_fecha ON partos (rancho_id, fecha DESC);

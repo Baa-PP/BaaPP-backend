@@ -1,54 +1,54 @@
 -- V4__vistas.sql: vistas de lectura para la app móvil y el portal web.
 -- Nada de esto se guarda: edades, GDP, tasas e indicadores se calculan al consultar.
--- Cordero = life_stage LAMB_LACTATING o LAMB_FATTENING · gestación 150 días · peso de venta 35 kg.
+-- Cordero = etapa_vida LAMB_LACTATING o LAMB_FATTENING · gestación 150 días · peso de venta 35 kg.
 -- Para cambiar una vista después, crear una migración nueva (V5__…) con CREATE OR REPLACE VIEW.
 
 -- 1. Ficha y lista del rebaño
 CREATE VIEW v_animal_resumen AS
 SELECT a.id                                         AS animal_id,
-       a.ranch_id                                   AS rancho_id,
+       a.rancho_id                                   AS rancho_id,
        a.folio_interno,
-       a.siniiga_chip,
+       a.chip_siniiga,
        a.registro_uno,
-       a.sex                                        AS sexo,
-       a.life_stage                                 AS etapa,
-       a.reproductive_status                        AS estado_reproductivo,
-       a.breed                                      AS raza,
+       a.sexo                                        AS sexo,
+       a.etapa_vida                                 AS etapa,
+       a.estado_reproductivo                        AS estado_reproductivo,
+       a.raza                                      AS raza,
        a.color,
-       a.birth_date                                 AS fecha_nacimiento,
-       CURRENT_DATE - a.birth_date                  AS edad_dias,
-       a.weaning_date                               AS fecha_destete,
-       a.entry_reason                               AS motivo_alta,
-       a.criador_name                               AS criador,
-       r.owner_name                                 AS propietario,
-       a.photo_s3_key                               AS foto_s3_key,
-       up.weight_kg                                 AS ultimo_peso_kg,
-       up.measured_at                               AS fecha_ultimo_peso,
+       a.fecha_nacimiento                                 AS fecha_nacimiento,
+       CURRENT_DATE - a.fecha_nacimiento                  AS edad_dias,
+       a.fecha_destete                               AS fecha_destete,
+       a.motivo_alta                               AS motivo_alta,
+       a.criador                               AS criador,
+       r.propietario                                 AS propietario,
+       a.foto_s3_key                               AS foto_s3_key,
+       up.peso_kg                                 AS ultimo_peso_kg,
+       up.fecha                               AS fecha_ultimo_peso,
        pt.partos,
        EXISTS (SELECT 1 FROM empadres e
                 WHERE e.hembra_id = a.id AND NOT e.cerrado
                   AND e.diagnostico IS DISTINCT FROM 'EMPTY') AS cargada,
-       a.status                                     AS estado,
-       a.mortality_date                             AS fecha_muerte,
-       a.mortality_cause                            AS causa_muerte,
-       a.sire_id                                    AS padre_id,
-       a.dam_id                                     AS madre_id
-FROM animals a
-JOIN ranches r ON r.id = a.ranch_id
+       a.estado                                     AS estado,
+       a.fecha_muerte                             AS fecha_muerte,
+       a.causa_muerte                            AS causa_muerte,
+       a.padre_id                                    AS padre_id,
+       a.madre_id                                     AS madre_id
+FROM animales a
+JOIN ranchos r ON r.id = a.rancho_id
 LEFT JOIN LATERAL (
-    SELECT w.weight_kg, w.measured_at FROM weight_measurements w
+    SELECT w.peso_kg, w.fecha FROM pesajes w
     WHERE w.animal_id = a.id
-    ORDER BY w.measured_at DESC LIMIT 1
+    ORDER BY w.fecha DESC LIMIT 1
 ) up ON TRUE
 CROSS JOIN LATERAL (
-    SELECT COUNT(*)::INT AS partos FROM birth_events b WHERE b.dam_id = a.id
+    SELECT COUNT(*)::INT AS partos FROM partos b WHERE b.madre_id = a.id
 ) pt;
 
 -- 2. Inicio y "todos mis ranchos" (GROUP BY)
 CREATE VIEW v_resumen_rancho AS
 SELECT r.id                                                                         AS rancho_id,
-       r.name                                                                       AS rancho,
-       r.owner_name                                                                 AS propietario,
+       r.nombre                                                                       AS rancho,
+       r.propietario                                                                 AS propietario,
        COUNT(v.animal_id)                                                           AS animales_activos,
        COUNT(v.animal_id) FILTER (WHERE v.sexo = 'FEMALE' AND v.etapa NOT LIKE 'LAMB%') AS hembras,
        COUNT(v.animal_id) FILTER (WHERE v.cargada)                                  AS cargadas,
@@ -57,9 +57,9 @@ SELECT r.id                                                                     
        COUNT(v.animal_id) FILTER (WHERE v.estado_reproductivo = 'STUD_RAM')         AS sementales,
        COUNT(v.animal_id) FILTER (WHERE NOT EXISTS (
            SELECT 1 FROM raciones ra WHERE ra.animal_id = v.animal_id))             AS animales_sin_dieta
-FROM ranches r
+FROM ranchos r
 LEFT JOIN v_animal_resumen v ON v.rancho_id = r.id AND v.estado = 'ACTIVE'
-GROUP BY r.id, r.name, r.owner_name;
+GROUP BY r.id, r.nombre, r.propietario;
 
 -- 3. Pesaje: diferencia contra el pesaje anterior (LAG)
 CREATE VIEW v_pesaje_ganancia AS
@@ -77,27 +77,27 @@ SELECT s.pesaje_id,
        ROUND(1000 * (s.peso_kg - s.peso_anterior_kg)
              / NULLIF(s.fecha - s.fecha_anterior, 0))                   AS ganancia_diaria_g
 FROM (
-    SELECT w.id AS pesaje_id, w.animal_id, w.ranch_id AS rancho_id, a.folio_interno,
-           w.milestone AS hito, w.measured_at AS fecha, w.weight_kg AS peso_kg,
-           w.measured_at - a.birth_date                                          AS edad_dias,
-           LAG(w.weight_kg)   OVER (PARTITION BY w.animal_id ORDER BY w.measured_at) AS peso_anterior_kg,
-           LAG(w.measured_at) OVER (PARTITION BY w.animal_id ORDER BY w.measured_at) AS fecha_anterior
-    FROM weight_measurements w
-    JOIN animals a ON a.id = w.animal_id
+    SELECT w.id AS pesaje_id, w.animal_id, w.rancho_id AS rancho_id, a.folio_interno,
+           w.hito AS hito, w.fecha AS fecha, w.peso_kg AS peso_kg,
+           w.fecha - a.fecha_nacimiento                                          AS edad_dias,
+           LAG(w.peso_kg)   OVER (PARTITION BY w.animal_id ORDER BY w.fecha) AS peso_anterior_kg,
+           LAG(w.fecha) OVER (PARTITION BY w.animal_id ORDER BY w.fecha) AS fecha_anterior
+    FROM pesajes w
+    JOIN animales a ON a.id = w.animal_id
 ) s;
 
 -- 4. Genealogía hasta bisabuelos (CTE recursiva). ruta: M = madre, P = padre
 CREATE VIEW v_genealogia AS
 WITH RECURSIVE arbol (animal_id, ancestro_id, generacion, ruta) AS (
     SELECT a.id, x.pid, 1, x.lado::TEXT
-    FROM animals a
-    CROSS JOIN LATERAL (VALUES (a.dam_id, 'M'), (a.sire_id, 'P')) AS x (pid, lado)
+    FROM animales a
+    CROSS JOIN LATERAL (VALUES (a.madre_id, 'M'), (a.padre_id, 'P')) AS x (pid, lado)
     WHERE x.pid IS NOT NULL
     UNION ALL
     SELECT ar.animal_id, x.pid, ar.generacion + 1, ar.ruta || x.lado
     FROM arbol ar
-    JOIN animals p ON p.id = ar.ancestro_id
-    CROSS JOIN LATERAL (VALUES (p.dam_id, 'M'), (p.sire_id, 'P')) AS x (pid, lado)
+    JOIN animales p ON p.id = ar.ancestro_id
+    CROSS JOIN LATERAL (VALUES (p.madre_id, 'M'), (p.padre_id, 'P')) AS x (pid, lado)
     WHERE x.pid IS NOT NULL AND ar.generacion < 3
 )
 SELECT ar.animal_id,
@@ -105,20 +105,20 @@ SELECT ar.animal_id,
        ar.generacion,
        ar.ruta,
        CASE ar.generacion
-           WHEN 1 THEN CASE WHEN an.sex = 'FEMALE' THEN 'Madre' ELSE 'Padre' END
-           WHEN 2 THEN CASE WHEN an.sex = 'FEMALE' THEN 'Abuela' ELSE 'Abuelo' END
-           ELSE        CASE WHEN an.sex = 'FEMALE' THEN 'Bisabuela' ELSE 'Bisabuelo' END
+           WHEN 1 THEN CASE WHEN an.sexo = 'FEMALE' THEN 'Madre' ELSE 'Padre' END
+           WHEN 2 THEN CASE WHEN an.sexo = 'FEMALE' THEN 'Abuela' ELSE 'Abuelo' END
+           ELSE        CASE WHEN an.sexo = 'FEMALE' THEN 'Bisabuela' ELSE 'Bisabuelo' END
        END                                                        AS parentesco,
        CASE LEFT(ar.ruta, 1) WHEN 'M' THEN 'materna' ELSE 'paterna' END AS linea,
        an.folio_interno,
        an.registro_uno,
-       an.sex                                                     AS sexo,
-       an.breed                                                   AS raza,
+       an.sexo                                                     AS sexo,
+       an.raza                                                   AS raza,
        an.color,
-       an.criador_name                                            AS criador,
-       an.birth_date                                              AS fecha_nacimiento
+       an.criador                                            AS criador,
+       an.fecha_nacimiento                                              AS fecha_nacimiento
 FROM arbol ar
-JOIN animals an ON an.id = ar.ancestro_id;
+JOIN animales an ON an.id = ar.ancestro_id;
 
 -- 5. Borregas cargadas y fecha probable de parto
 CREATE VIEW v_cargadas AS
@@ -135,39 +135,39 @@ SELECT e.id                                   AS empadre_id,
        e.diagnostico,
        e.fecha_diagnostico
 FROM empadres e
-JOIN animals h ON h.id = e.hembra_id
-LEFT JOIN animals s ON s.id = e.semental_id
-WHERE NOT e.cerrado AND h.status = 'ACTIVE'
+JOIN animales h ON h.id = e.hembra_id
+LEFT JOIN animales s ON s.id = e.semental_id
+WHERE NOT e.cerrado AND h.estado = 'ACTIVE'
   AND e.diagnostico IS DISTINCT FROM 'EMPTY';
 
 -- 6. Partos registrados con sus crías
 CREATE VIEW v_partos AS
 SELECT b.id                                        AS parto_id,
-       b.ranch_id                                  AS rancho_id,
-       b.dam_id                                    AS madre_id,
+       b.rancho_id                                  AS rancho_id,
+       b.madre_id                                    AS madre_id,
        m.folio_interno                             AS madre_folio,
        COALESCE(s.folio_interno, e.semental_externo_folio) AS padre_folio,
-       b.birth_date                                AS fecha,
-       b.live_born_count                           AS nacidos_vivos,
-       b.stillborn_count                           AS nacidos_muertos,
-       CASE b.live_born_count + b.stillborn_count
+       b.fecha                                AS fecha,
+       b.nacidos_vivos                           AS nacidos_vivos,
+       b.nacidos_muertos                           AS nacidos_muertos,
+       CASE b.nacidos_vivos + b.nacidos_muertos
            WHEN 1 THEN 'SIMPLE' WHEN 2 THEN 'TWIN' WHEN 3 THEN 'TRIPLET'
            WHEN 4 THEN 'QUADRUPLET' ELSE 'QUINTUPLET'
        END                                         AS tipo_parto,
        c.crias_registradas,
        c.crias_muertas_despues,
        c.folios_crias,
-       CURRENT_DATE - b.birth_date > 30            AS bloqueado,
-       b.evidence_photo_s3_key                     AS foto_evidencia_s3_key
-FROM birth_events b
-JOIN animals m ON m.id = b.dam_id
-LEFT JOIN animals s ON s.id = b.sire_id
-LEFT JOIN empadres e ON e.birth_event_id = b.id
+       CURRENT_DATE - b.fecha > 30            AS bloqueado,
+       b.foto_evidencia_s3_key                     AS foto_evidencia_s3_key
+FROM partos b
+JOIN animales m ON m.id = b.madre_id
+LEFT JOIN animales s ON s.id = b.padre_id
+LEFT JOIN empadres e ON e.parto_id = b.id
 CROSS JOIN LATERAL (
     SELECT COUNT(*)::INT                                       AS crias_registradas,
-           COUNT(*) FILTER (WHERE x.status = 'DECEASED')::INT  AS crias_muertas_despues,
+           COUNT(*) FILTER (WHERE x.estado = 'DECEASED')::INT  AS crias_muertas_despues,
            STRING_AGG(x.folio_interno, ', ' ORDER BY x.folio_interno) AS folios_crias
-    FROM animals x WHERE x.birth_event_id = b.id
+    FROM animales x WHERE x.parto_id = b.id
 ) c;
 
 -- 7. Reproducción por temporada (trimestre del empadre, GROUP BY)
@@ -181,16 +181,16 @@ SELECT e.rancho_id,
              / NULLIF(COUNT(*) FILTER (WHERE e.diagnostico IS NOT NULL OR b.id IS NOT NULL), 0), 1) AS pct_prenez,
        COUNT(b.id)                                                              AS partos,
        ROUND(100.0 * COUNT(b.id) / COUNT(*), 1)                                 AS pct_parto,
-       COALESCE(SUM(b.live_born_count + b.stillborn_count), 0)                  AS crias_nacidas,
-       ROUND(SUM(b.live_born_count + b.stillborn_count)::NUMERIC / NULLIF(COUNT(b.id), 0), 2) AS crias_por_parto,
-       COALESCE(SUM(b.stillborn_count + cm.muertas_despues), 0)                 AS crias_muertas,
-       ROUND(100.0 * SUM(b.stillborn_count + cm.muertas_despues)
-             / NULLIF(SUM(b.live_born_count + b.stillborn_count), 0), 1)        AS pct_mortalidad
+       COALESCE(SUM(b.nacidos_vivos + b.nacidos_muertos), 0)                  AS crias_nacidas,
+       ROUND(SUM(b.nacidos_vivos + b.nacidos_muertos)::NUMERIC / NULLIF(COUNT(b.id), 0), 2) AS crias_por_parto,
+       COALESCE(SUM(b.nacidos_muertos + cm.muertas_despues), 0)                 AS crias_muertas,
+       ROUND(100.0 * SUM(b.nacidos_muertos + cm.muertas_despues)
+             / NULLIF(SUM(b.nacidos_vivos + b.nacidos_muertos), 0), 1)        AS pct_mortalidad
 FROM empadres e
-LEFT JOIN birth_events b ON b.id = e.birth_event_id
+LEFT JOIN partos b ON b.id = e.parto_id
 LEFT JOIN LATERAL (
-    SELECT COUNT(*)::INT AS muertas_despues FROM animals x
-    WHERE x.birth_event_id = b.id AND x.status = 'DECEASED'
+    SELECT COUNT(*)::INT AS muertas_despues FROM animales x
+    WHERE x.parto_id = b.id AND x.estado = 'DECEASED'
 ) cm ON TRUE
 GROUP BY e.rancho_id, DATE_TRUNC('quarter', e.fecha);
 
@@ -207,8 +207,8 @@ SELECT h.animal_id, h.rancho_id, h.folio_interno, h.edad_dias,
            ELSE 'BREEDING'
        END AS destino_sugerido
 FROM (
-    SELECT a.id AS animal_id, a.ranch_id AS rancho_id, a.folio_interno,
-           CURRENT_DATE - a.birth_date                                        AS edad_dias,
+    SELECT a.id AS animal_id, a.rancho_id AS rancho_id, a.folio_interno,
+           CURRENT_DATE - a.fecha_nacimiento                                        AS edad_dias,
            em.empadres, em.diagnosticados, em.prenadas,
            ROUND(100.0 * em.prenadas / NULLIF(em.diagnosticados, 0), 1)       AS pct_prenez,
            pt.partos, pt.crias_nacidas,
@@ -218,51 +218,51 @@ FROM (
            pt.ultimo_parto,
            CURRENT_DATE - pt.ultimo_parto                                     AS dias_desde_ultimo_parto,
            em.abiertos > 0                                                    AS cargada,
-           (CURRENT_DATE - a.birth_date > 600 AND em.abiertos = 0
+           (CURRENT_DATE - a.fecha_nacimiento > 600 AND em.abiertos = 0
              AND (pt.ultimo_parto IS NULL OR pt.ultimo_parto < CURRENT_DATE - 365)) AS improductiva
-    FROM animals a
+    FROM animales a
     CROSS JOIN LATERAL (
         SELECT COUNT(*)::INT                                                   AS empadres,
-               COUNT(*) FILTER (WHERE e.diagnostico IS NOT NULL OR e.birth_event_id IS NOT NULL)::INT  AS diagnosticados,
-               COUNT(*) FILTER (WHERE e.diagnostico = 'PREGNANT' OR e.birth_event_id IS NOT NULL)::INT AS prenadas,
+               COUNT(*) FILTER (WHERE e.diagnostico IS NOT NULL OR e.parto_id IS NOT NULL)::INT  AS diagnosticados,
+               COUNT(*) FILTER (WHERE e.diagnostico = 'PREGNANT' OR e.parto_id IS NOT NULL)::INT AS prenadas,
                COUNT(*) FILTER (WHERE NOT e.cerrado
                                   AND e.diagnostico IS DISTINCT FROM 'EMPTY')::INT AS abiertos
         FROM empadres e WHERE e.hembra_id = a.id
     ) em
     CROSS JOIN LATERAL (
         SELECT COUNT(*)::INT                                                   AS partos,
-               COALESCE(SUM(b.live_born_count + b.stillborn_count), 0)::INT    AS crias_nacidas,
-               COALESCE(SUM(b.stillborn_count + (SELECT COUNT(*) FROM animals x
-                    WHERE x.birth_event_id = b.id AND x.status = 'DECEASED')), 0)::INT AS crias_muertas,
-               MAX(b.birth_date)                                               AS ultimo_parto
-        FROM birth_events b WHERE b.dam_id = a.id
+               COALESCE(SUM(b.nacidos_vivos + b.nacidos_muertos), 0)::INT    AS crias_nacidas,
+               COALESCE(SUM(b.nacidos_muertos + (SELECT COUNT(*) FROM animales x
+                    WHERE x.parto_id = b.id AND x.estado = 'DECEASED')), 0)::INT AS crias_muertas,
+               MAX(b.fecha)                                               AS ultimo_parto
+        FROM partos b WHERE b.madre_id = a.id
     ) pt
-    WHERE a.sex = 'FEMALE' AND a.status = 'ACTIVE' AND a.life_stage NOT LIKE 'LAMB%'
+    WHERE a.sexo = 'FEMALE' AND a.estado = 'ACTIVE' AND a.etapa_vida NOT LIKE 'LAMB%'
 ) h;
 
 -- 9. Ranking de crecimiento de corderos (regresión + PERCENT_RANK)
 --    GDP = pendiente de la recta de sus últimos 4 pesajes
 CREATE VIEW v_ranking_crecimiento AS
 WITH ult AS (
-    SELECT w.animal_id, w.weight_kg, (w.measured_at - a.birth_date)::NUMERIC AS edad_pesaje,
-           ROW_NUMBER() OVER (PARTITION BY w.animal_id ORDER BY w.measured_at DESC) AS n
-    FROM weight_measurements w JOIN animals a ON a.id = w.animal_id
+    SELECT w.animal_id, w.peso_kg, (w.fecha - a.fecha_nacimiento)::NUMERIC AS edad_pesaje,
+           ROW_NUMBER() OVER (PARTITION BY w.animal_id ORDER BY w.fecha DESC) AS n
+    FROM pesajes w JOIN animales a ON a.id = w.animal_id
 ), recta AS (
     SELECT animal_id,
-           REGR_SLOPE(weight_kg, edad_pesaje)     AS kg_dia,
-           REGR_INTERCEPT(weight_kg, edad_pesaje) AS ordenada
+           REGR_SLOPE(peso_kg, edad_pesaje)     AS kg_dia,
+           REGR_INTERCEPT(peso_kg, edad_pesaje) AS ordenada
     FROM ult WHERE n <= 4
     GROUP BY animal_id
     HAVING COUNT(*) >= 2
 ), c AS (
-    SELECT a.id AS animal_id, a.ranch_id AS rancho_id, a.folio_interno, a.sex AS sexo,
-           CURRENT_DATE - a.birth_date                                             AS edad_dias,
+    SELECT a.id AS animal_id, a.rancho_id AS rancho_id, a.folio_interno, a.sexo AS sexo,
+           CURRENT_DATE - a.fecha_nacimiento                                             AS edad_dias,
            ROUND((rc.kg_dia * 1000)::NUMERIC)                                      AS ganancia_diaria_g,
-           ROUND((rc.ordenada + rc.kg_dia * (CURRENT_DATE - a.birth_date))::NUMERIC, 1) AS peso_estimado_hoy_kg,
+           ROUND((rc.ordenada + rc.kg_dia * (CURRENT_DATE - a.fecha_nacimiento))::NUMERIC, 1) AS peso_estimado_hoy_kg,
            rc.kg_dia
     FROM recta rc
-    JOIN animals a ON a.id = rc.animal_id
-    WHERE a.status = 'ACTIVE' AND a.life_stage LIKE 'LAMB%'
+    JOIN animales a ON a.id = rc.animal_id
+    WHERE a.estado = 'ACTIVE' AND a.etapa_vida LIKE 'LAMB%'
 )
 SELECT c.animal_id,
        c.rancho_id,
@@ -298,13 +298,13 @@ SELECT x.animal_id,
        ROUND(AVG(x.peso_kg) OVER (PARTITION BY x.rancho_id, x.sexo, x.hito), 2)              AS promedio_rancho_kg,
        x.peso_kg - ROUND(AVG(x.peso_kg) OVER (PARTITION BY x.rancho_id, x.sexo, x.hito), 2)  AS diferencia_kg
 FROM (
-    SELECT DISTINCT ON (w.animal_id, w.milestone)
-           w.animal_id, w.ranch_id AS rancho_id, a.folio_interno, a.sex AS sexo,
-           w.milestone AS hito, w.measured_at AS fecha, w.weight_kg AS peso_kg,
-           w.scrotal_circumference_cm AS circunferencia_escrotal_cm
-    FROM weight_measurements w
-    JOIN animals a ON a.id = w.animal_id
-    ORDER BY w.animal_id, w.milestone, w.measured_at DESC
+    SELECT DISTINCT ON (w.animal_id, w.hito)
+           w.animal_id, w.rancho_id AS rancho_id, a.folio_interno, a.sexo AS sexo,
+           w.hito AS hito, w.fecha AS fecha, w.peso_kg AS peso_kg,
+           w.circunferencia_escrotal_cm AS circunferencia_escrotal_cm
+    FROM pesajes w
+    JOIN animales a ON a.id = w.animal_id
+    ORDER BY w.animal_id, w.hito, w.fecha DESC
 ) x;
 
 -- 11. Qué vacunas tiene y cuáles le faltan a cada animal
@@ -326,19 +326,19 @@ SELECT s.rancho_id,
            ELSE 'UP_TO_DATE'
        END                                                     AS estado
 FROM (
-    SELECT a.ranch_id AS rancho_id, a.id AS animal_id, a.folio_interno,
+    SELECT a.rancho_id AS rancho_id, a.id AS animal_id, a.folio_interno,
            ev.id AS esquema_vacuna_id, ev.nombre AS vacuna, tt.nombre AS tipo,
            ev.edad_inicio_dias, ev.cada_dias,
-           CURRENT_DATE - a.birth_date AS edad_dias,
+           CURRENT_DATE - a.fecha_nacimiento AS edad_dias,
            (SELECT MAX(t.fecha)
               FROM tratamientos_animal ta
               JOIN tratamientos t ON t.id = ta.tratamiento_id
              WHERE ta.animal_id = a.id AND t.esquema_vacuna_id = ev.id) AS ultima_aplicacion
-    FROM animals a
-    JOIN esquemas_vacuna ev   ON ev.rancho_id = a.ranch_id
+    FROM animales a
+    JOIN esquemas_vacuna ev   ON ev.rancho_id = a.rancho_id
     JOIN tipos_tratamiento tt ON tt.id = ev.tipo_tratamiento_id
-    WHERE a.status = 'ACTIVE'
-      AND (ev.aplica_a = 'ALL' OR ev.aplica_a = a.sex)
+    WHERE a.estado = 'ACTIVE'
+      AND (ev.aplica_a = 'ALL' OR ev.aplica_a = a.sexo)
 ) s;
 
 -- 12. Cobertura del calendario de vacunas por rancho (GROUP BY, vista sobre vista)
@@ -380,14 +380,14 @@ FROM tratamientos t
 JOIN tipos_tratamiento tt       ON tt.id = t.tipo_tratamiento_id
 LEFT JOIN esquemas_vacuna ev    ON ev.id = t.esquema_vacuna_id
 LEFT JOIN tratamientos_animal ta ON ta.tratamiento_id = t.id
-LEFT JOIN animals a             ON a.id = ta.animal_id
+LEFT JOIN animales a             ON a.id = ta.animal_id
 GROUP BY t.id, t.rancho_id, t.fecha, tt.nombre, t.producto, t.alcance, ev.nombre, t.proxima_fecha, t.notas;
 
 -- 14. Dieta de cada animal con su periodo (LEAD)
 CREATE VIEW v_racion_periodo AS
 SELECT rp.racion_id,
        rp.animal_id,
-       a.ranch_id                                                AS rancho_id,
+       a.rancho_id                                                AS rancho_id,
        a.folio_interno,
        rp.fecha_inicio,
        rp.fecha_fin,
@@ -410,7 +410,7 @@ FROM (
     WHERE r.fecha_inicio <= CURRENT_DATE
     WINDOW w AS (PARTITION BY r.animal_id ORDER BY r.fecha_inicio)
 ) rp
-JOIN animals a           ON a.id = rp.animal_id
+JOIN animales a           ON a.id = rp.animal_id
 JOIN raciones_alimento ra ON ra.racion_id = rp.racion_id
 JOIN alimentos al        ON al.id = ra.alimento_id
 JOIN tipos_alimento ti   ON ti.id = al.tipo_alimento_id;
@@ -447,8 +447,8 @@ SELECT rp.rancho_id,
        ROUND(SUM(rp.kg_dia * al.precio_presentacion / al.kg_presentacion) * 30, 2) AS costo_mes
 FROM v_racion_periodo rp
 JOIN alimentos al ON al.id = rp.alimento_id
-JOIN animals a    ON a.id = rp.animal_id
-WHERE rp.es_actual AND a.status = 'ACTIVE'
+JOIN animales a    ON a.id = rp.animal_id
+WHERE rp.es_actual AND a.estado = 'ACTIVE'
 GROUP BY rp.rancho_id, rp.alimento_id, rp.marca, rp.alimento, rp.tipo_alimento;
 
 -- 17. Catálogo para recomendar y comparar alimentos (RANK)
@@ -473,7 +473,7 @@ SELECT al.id                                                              AS ali
        et.etapas_recomendadas,
        al.uso
 FROM alimentos al
-JOIN ranches r ON al.rancho_id IS NULL OR al.rancho_id = r.id
+JOIN ranchos r ON al.rancho_id IS NULL OR al.rancho_id = r.id
 JOIN tipos_alimento ti ON ti.id = al.tipo_alimento_id
 LEFT JOIN LATERAL (
     SELECT STRING_AGG(ep.nombre, ', ' ORDER BY ep.id) AS etapas_recomendadas
@@ -523,7 +523,7 @@ FROM (
 CREATE VIEW v_competencias_animal AS
 SELECT pa.id                                      AS participacion_id,
        a.id                                       AS animal_id,
-       a.ranch_id                                 AS rancho_id,
+       a.rancho_id                                 AS rancho_id,
        a.folio_interno,
        ev.fecha,
        ev.nombre                                  AS evento,
@@ -536,7 +536,7 @@ SELECT pa.id                                      AS participacion_id,
        pa.foto_s3_key,
        pa.nota
 FROM participaciones pa
-JOIN animals a                  ON a.id = pa.animal_id
+JOIN animales a                  ON a.id = pa.animal_id
 JOIN eventos_competencia ev     ON ev.id = pa.evento_competencia_id
 JOIN resultados_competencia rc  ON rc.id = pa.resultado_competencia_id;
 
@@ -546,16 +546,16 @@ CREATE VIEW v_tamano_rebano_mensual AS
 SELECT r.id                                                                    AS rancho_id,
        m.mes::DATE                                                             AS mes,
        COUNT(a.id) FILTER (
-           WHERE a.birth_date <= (m.mes + INTERVAL '1 month - 1 day')::DATE
-             AND (a.status = 'ACTIVE'
-                  OR (a.status = 'DECEASED' AND a.mortality_date > (m.mes + INTERVAL '1 month - 1 day')::DATE))) AS animales,
-       COUNT(a.id) FILTER (WHERE a.entry_reason = 'BIRTH'
-                             AND DATE_TRUNC('month', a.birth_date) = m.mes)    AS nacimientos,
-       COUNT(a.id) FILTER (WHERE DATE_TRUNC('month', a.mortality_date) = m.mes) AS muertes
-FROM ranches r
+           WHERE a.fecha_nacimiento <= (m.mes + INTERVAL '1 month - 1 day')::DATE
+             AND (a.estado = 'ACTIVE'
+                  OR (a.estado = 'DECEASED' AND a.fecha_muerte > (m.mes + INTERVAL '1 month - 1 day')::DATE))) AS animales,
+       COUNT(a.id) FILTER (WHERE a.motivo_alta = 'BIRTH'
+                             AND DATE_TRUNC('month', a.fecha_nacimiento) = m.mes)    AS nacimientos,
+       COUNT(a.id) FILTER (WHERE DATE_TRUNC('month', a.fecha_muerte) = m.mes) AS muertes
+FROM ranchos r
 CROSS JOIN GENERATE_SERIES(DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '11 months',
                            DATE_TRUNC('month', CURRENT_DATE), INTERVAL '1 month') AS m (mes)
-LEFT JOIN animals a ON a.ranch_id = r.id
+LEFT JOIN animales a ON a.rancho_id = r.id
 GROUP BY r.id, m.mes;
 
 -- 22. Composición del rebaño y peso por raza (GROUP BY, vista sobre vista)
@@ -585,73 +585,73 @@ SELECT s.animal_id, s.rancho_id, s.folio_interno, s.registro_uno, s.raza, s.edad
            ELSE 'STUD_RAM'
        END AS destino_sugerido
 FROM (
-    SELECT a.id AS animal_id, a.ranch_id AS rancho_id, a.folio_interno, a.registro_uno,
-           a.breed AS raza, CURRENT_DATE - a.birth_date AS edad_dias,
+    SELECT a.id AS animal_id, a.rancho_id AS rancho_id, a.folio_interno, a.registro_uno,
+           a.raza AS raza, CURRENT_DATE - a.fecha_nacimiento AS edad_dias,
            em.hembras_cubiertas, em.diagnosticados, em.prenadas,
            ROUND(100.0 * em.prenadas / NULLIF(em.diagnosticados, 0), 1) AS pct_prenez,
            cr.crias, cr.crias_muertas,
            gc.ganancia_crias_g
-    FROM animals a
+    FROM animales a
     -- Se agrega una sola vez por padre (no una subconsulta por semental)
     LEFT JOIN (
-        SELECT h.sire_id, ROUND(AVG(rc.ganancia_diaria_g)) AS ganancia_crias_g
+        SELECT h.padre_id, ROUND(AVG(rc.ganancia_diaria_g)) AS ganancia_crias_g
         FROM v_ranking_crecimiento rc
-        JOIN animals h ON h.id = rc.animal_id
-        GROUP BY h.sire_id
-    ) gc ON gc.sire_id = a.id
+        JOIN animales h ON h.id = rc.animal_id
+        GROUP BY h.padre_id
+    ) gc ON gc.padre_id = a.id
     CROSS JOIN LATERAL (
         SELECT COUNT(DISTINCT e.hembra_id)::INT                         AS hembras_cubiertas,
-               COUNT(*) FILTER (WHERE e.diagnostico IS NOT NULL OR e.birth_event_id IS NOT NULL)::INT  AS diagnosticados,
-               COUNT(*) FILTER (WHERE e.diagnostico = 'PREGNANT' OR e.birth_event_id IS NOT NULL)::INT AS prenadas
+               COUNT(*) FILTER (WHERE e.diagnostico IS NOT NULL OR e.parto_id IS NOT NULL)::INT  AS diagnosticados,
+               COUNT(*) FILTER (WHERE e.diagnostico = 'PREGNANT' OR e.parto_id IS NOT NULL)::INT AS prenadas
         FROM empadres e WHERE e.semental_id = a.id
     ) em
     CROSS JOIN LATERAL (
         SELECT COUNT(*)::INT                                       AS crias,
-               COUNT(*) FILTER (WHERE h.status = 'DECEASED')::INT  AS crias_muertas
-        FROM animals h WHERE h.sire_id = a.id
+               COUNT(*) FILTER (WHERE h.estado = 'DECEASED')::INT  AS crias_muertas
+        FROM animales h WHERE h.padre_id = a.id
     ) cr
-    WHERE a.sex = 'MALE' AND a.status = 'ACTIVE' AND a.reproductive_status = 'STUD_RAM'
+    WHERE a.sexo = 'MALE' AND a.estado = 'ACTIVE' AND a.estado_reproductivo = 'STUD_RAM'
 ) s;
 
 -- 24. Sábana oficial de 24 columnas (A–X), DATABASE_DESIGN.md §5
 CREATE VIEW v_sabana AS
 SELECT a.id                                                        AS animal_id,
-       a.ranch_id                                                  AS rancho_id,
+       a.rancho_id                                                  AS rancho_id,
        a.folio_interno                                             AS folio,                -- A
        a.adn,                                                                               -- B
-       a.siniiga_chip                                              AS chip,                 -- C
-       a.birth_date                                                AS fecha_nacimiento,     -- D
-       a.weaning_date                                              AS fecha_destete,        -- E
-       ROUND((CURRENT_DATE - a.birth_date) / 30.0, 1)              AS edad_meses,           -- F
-       CURRENT_DATE - a.birth_date                                 AS edad_dias,            -- G
+       a.chip_siniiga                                              AS chip,                 -- C
+       a.fecha_nacimiento                                                AS fecha_nacimiento,     -- D
+       a.fecha_destete                                              AS fecha_destete,        -- E
+       ROUND((CURRENT_DATE - a.fecha_nacimiento) / 30.0, 1)              AS edad_meses,           -- F
+       CURRENT_DATE - a.fecha_nacimiento                                 AS edad_dias,            -- G
        p.peso_nacimiento,                                                                   -- H
        p.peso_120_dias,                                                                     -- I
        p.peso_150_dias,                                                                     -- J
        p.peso_evaluacion,                                                                   -- K
        p.circunferencia,                                                                    -- L
        p.peso_destete,                                                                      -- M
-       a.parturition_type                                          AS tipo_destete,         -- N
-       COALESCE(s.folio_interno, a.external_sire_folio)            AS padre,                -- O
+       a.tipo_parto                                          AS tipo_destete,         -- N
+       COALESCE(s.folio_interno, a.folio_padre_externo)            AS padre,                -- O
        s.registro_uno                                              AS folio_padre_uno,      -- P
-       COALESCE(d.folio_interno, a.external_dam_folio)             AS madre,                -- Q
+       COALESCE(d.folio_interno, a.folio_madre_externo)             AS madre,                -- Q
        d.registro_uno                                              AS folio_madre_uno,      -- R
-       a.breed                                                     AS raza,                 -- S
-       a.parturition_type                                          AS tipo_parto,           -- T
-       a.conception_method                                         AS concepcion,           -- U
+       a.raza                                                     AS raza,                 -- S
+       a.tipo_parto                                          AS tipo_parto,           -- T
+       a.metodo_concepcion                                         AS concepcion,           -- U
        a.color,                                                                             -- V
-       CASE a.sex WHEN 'FEMALE' THEN 'HEMBRA' ELSE 'MACHO' END     AS sexo,                 -- W
+       CASE a.sexo WHEN 'FEMALE' THEN 'HEMBRA' ELSE 'MACHO' END     AS sexo,                 -- W
        CURRENT_DATE                                                AS fecha_corte,          -- X
-       a.status                                                    AS estado
-FROM animals a
-LEFT JOIN animals s ON s.id = a.sire_id
-LEFT JOIN animals d ON d.id = a.dam_id
+       a.estado                                                    AS estado
+FROM animales a
+LEFT JOIN animales s ON s.id = a.padre_id
+LEFT JOIN animales d ON d.id = a.madre_id
 LEFT JOIN LATERAL (
-    SELECT (ARRAY_AGG(w.weight_kg ORDER BY w.measured_at DESC) FILTER (WHERE w.milestone = 'BIRTH'))[1]      AS peso_nacimiento,
-           (ARRAY_AGG(w.weight_kg ORDER BY w.measured_at DESC) FILTER (WHERE w.milestone = 'DAY_120'))[1]    AS peso_120_dias,
-           (ARRAY_AGG(w.weight_kg ORDER BY w.measured_at DESC) FILTER (WHERE w.milestone = 'DAY_150'))[1]    AS peso_150_dias,
-           (ARRAY_AGG(w.weight_kg ORDER BY w.measured_at DESC) FILTER (WHERE w.milestone = 'EVALUATION'))[1] AS peso_evaluacion,
-           (ARRAY_AGG(w.scrotal_circumference_cm ORDER BY w.measured_at DESC)
-                FILTER (WHERE w.scrotal_circumference_cm IS NOT NULL))[1]                                    AS circunferencia,
-           (ARRAY_AGG(w.weight_kg ORDER BY w.measured_at DESC) FILTER (WHERE w.milestone = 'WEANING'))[1]    AS peso_destete
-    FROM weight_measurements w WHERE w.animal_id = a.id
+    SELECT (ARRAY_AGG(w.peso_kg ORDER BY w.fecha DESC) FILTER (WHERE w.hito = 'BIRTH'))[1]      AS peso_nacimiento,
+           (ARRAY_AGG(w.peso_kg ORDER BY w.fecha DESC) FILTER (WHERE w.hito = 'DAY_120'))[1]    AS peso_120_dias,
+           (ARRAY_AGG(w.peso_kg ORDER BY w.fecha DESC) FILTER (WHERE w.hito = 'DAY_150'))[1]    AS peso_150_dias,
+           (ARRAY_AGG(w.peso_kg ORDER BY w.fecha DESC) FILTER (WHERE w.hito = 'EVALUATION'))[1] AS peso_evaluacion,
+           (ARRAY_AGG(w.circunferencia_escrotal_cm ORDER BY w.fecha DESC)
+                FILTER (WHERE w.circunferencia_escrotal_cm IS NOT NULL))[1]                                    AS circunferencia,
+           (ARRAY_AGG(w.peso_kg ORDER BY w.fecha DESC) FILTER (WHERE w.hito = 'WEANING'))[1]    AS peso_destete
+    FROM pesajes w WHERE w.animal_id = a.id
 ) p ON TRUE;
