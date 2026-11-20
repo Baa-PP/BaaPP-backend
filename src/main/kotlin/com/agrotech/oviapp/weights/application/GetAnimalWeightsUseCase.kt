@@ -44,19 +44,25 @@ class GetAnimalWeightsUseCase(
         val animal = animalPort.findByIdAndRanchId(animalId, ranchId)
             ?: throw ResourceNotFoundException("ANIMAL_NOT_FOUND", "Ejemplar no encontrado en el rancho activo.")
 
-        val projections = weightPort.findHistoryByAnimalAndRanch(animal.id, ranchId)
+        val sortedProjections = weightPort.findHistoryByAnimalAndRanch(animal.id, ranchId)
             .sortedWith(compareBy({ it.date }, { it.weightId }))
 
-        val entries = projections.map { row ->
-            val days = row.daysSincePrevious?.toLong()
-            val prev = row.previousWeightKg
-            val dailyKg = if (prev != null && days != null) {
-                ZootechnicalCalculator.dailyWeightGainKg(row.weightKg, prev, days)
+        // Recompute predecessor and gain fields in the final (date, weightId) order so
+        // same-day measurements always reference the immediately preceding displayed row.
+        val entries = sortedProjections.mapIndexed { index, row ->
+            val previous = if (index > 0) sortedProjections[index - 1] else null
+            val previousWeightKg = previous?.weightKg
+            val daysSincePrevious = previous?.let { ChronoUnit.DAYS.between(it.date, row.date).toInt() }
+            val gainKg = previousWeightKg?.let { row.weightKg.subtract(it) }
+            val daysLong = daysSincePrevious?.toLong()
+
+            val dailyKg = if (previousWeightKg != null && daysLong != null) {
+                ZootechnicalCalculator.dailyWeightGainKg(row.weightKg, previousWeightKg, daysLong)
             } else {
                 null
             }
-            val dailyGrams = row.dailyGainGrams ?: if (prev != null && days != null) {
-                ZootechnicalCalculator.dailyWeightGainGrams(row.weightKg, prev, days)
+            val dailyGrams = if (previousWeightKg != null && daysLong != null) {
+                ZootechnicalCalculator.dailyWeightGainGrams(row.weightKg, previousWeightKg, daysLong)
             } else {
                 null
             }
@@ -67,9 +73,9 @@ class GetAnimalWeightsUseCase(
                 date = row.date,
                 ageDays = row.ageDays,
                 weightKg = row.weightKg,
-                previousWeightKg = prev,
-                daysSincePrevious = row.daysSincePrevious,
-                gainKg = row.gainKg,
+                previousWeightKg = previousWeightKg,
+                daysSincePrevious = daysSincePrevious,
+                gainKg = gainKg,
                 dailyGainKg = dailyKg,
                 dailyGainGrams = dailyGrams,
             )

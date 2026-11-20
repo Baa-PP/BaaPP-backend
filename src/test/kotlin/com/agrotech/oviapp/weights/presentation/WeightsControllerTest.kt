@@ -3,7 +3,9 @@ package com.agrotech.oviapp.weights.presentation
 import com.agrotech.oviapp.domain.exception.DomainValidationException
 import com.agrotech.oviapp.domain.model.AnimalStatus
 import com.agrotech.oviapp.domain.model.LifeStage
+import com.agrotech.oviapp.domain.port.RanchMembershipPort
 import com.agrotech.oviapp.presentation.GlobalExceptionHandler
+import com.agrotech.oviapp.presentation.security.RanchAccessAuthorizer
 import com.agrotech.oviapp.presentation.security.RanchContextInterceptor
 import com.agrotech.oviapp.presentation.security.WebMvcConfig
 import com.agrotech.oviapp.weights.application.AnimalWeightHistoryResult
@@ -17,15 +19,19 @@ import com.agrotech.oviapp.weights.application.WeightHistoryEntry
 import com.agrotech.oviapp.weights.domain.WeaningDestination
 import com.agrotech.oviapp.weights.domain.WeightMeasurement
 import com.agrotech.oviapp.weights.domain.WeightMilestone
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.BDDMockito.given
+import org.mockito.Mockito.verifyNoInteractions
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.authentication.TestingAuthenticationToken
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import java.math.BigDecimal
@@ -34,7 +40,7 @@ import java.util.UUID
 
 @WebMvcTest(WeightsController::class)
 @AutoConfigureMockMvc(addFilters = false)
-@Import(RanchContextInterceptor::class, WebMvcConfig::class, GlobalExceptionHandler::class)
+@Import(RanchContextInterceptor::class, WebMvcConfig::class, GlobalExceptionHandler::class, RanchAccessAuthorizer::class)
 class WeightsControllerTest {
 
     @Autowired
@@ -49,12 +55,24 @@ class WeightsControllerTest {
     @MockitoBean
     private lateinit var confirmWeaningUseCase: ConfirmWeaningUseCase
 
+    @MockitoBean
+    private lateinit var ranchMembershipPort: RanchMembershipPort
+
     private val ranchId = UUID.fromString("11111111-1111-1111-1111-111111111111")
+    private val otherRanchId = UUID.fromString("99999999-9999-9999-9999-999999999999")
     private val animalId = UUID.fromString("22222222-2222-2222-2222-222222222222")
+    private val ownerPrincipal = TestingAuthenticationToken("producer_1", null, "ROLE_OWNER")
+
+    @BeforeEach
+    fun setUpMembership() {
+        given(ranchMembershipPort.hasAccess("producer_1", ranchId)).willReturn(true)
+        given(ranchMembershipPort.hasAccess("producer_1", otherRanchId)).willReturn(false)
+    }
 
     @Test
     fun `POST weights rejects missing X-Active-Ranch-Id header`() {
         mockMvc.post("/api/v1/weights") {
+            principal = ownerPrincipal
             contentType = MediaType.APPLICATION_JSON
             content = """
                 {
@@ -67,6 +85,93 @@ class WeightsControllerTest {
         }.andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("MISSING_RANCH_CONTEXT") }
+        }
+    }
+
+    @Test
+    fun `rejects caller who does not belong to active ranch with 403 before calling use cases`() {
+        mockMvc.get("/api/v1/animals/$animalId/weights") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", otherRanchId.toString())
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("RANCH_ACCESS_DENIED") }
+        }
+
+        mockMvc.post("/api/v1/weights") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", otherRanchId.toString())
+            contentType = MediaType.APPLICATION_JSON
+            content = """
+                {
+                  "animalId": "$animalId",
+                  "milestone": "WEANING",
+                  "weightKg": 20.5,
+                  "date": "2026-10-15"
+                }
+            """.trimIndent()
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("RANCH_ACCESS_DENIED") }
+        }
+
+        mockMvc.post("/api/v1/animals/$animalId/wean") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", otherRanchId.toString())
+            contentType = MediaType.APPLICATION_JSON
+            content = """
+                {
+                  "weaningDate": "2026-09-14",
+                  "weaningWeightKg": 20.50,
+                  "destination": "LAMB_FATTENING"
+                }
+            """.trimIndent()
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("RANCH_ACCESS_DENIED") }
+        }
+
+        verifyNoInteractions(registerWeightUseCase, getAnimalWeightsUseCase, confirmWeaningUseCase)
+    }
+
+    @Test
+    fun `POST weights rejects more than two decimal places via Bean Validation`() {
+        mockMvc.post("/api/v1/weights") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", ranchId.toString())
+            contentType = MediaType.APPLICATION_JSON
+            content = """
+                {
+                  "animalId": "$animalId",
+                  "milestone": "DAY_120",
+                  "weightKg": 12.345,
+                  "date": "2026-11-01"
+                }
+            """.trimIndent()
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("VALIDATION_ERROR") }
+        }
+
+        verifyNoInteractions(registerWeightUseCase)
+    }
+
+    @Test
+    fun `preserves standard 415 and 405 HTTP responses instead of converting to 500`() {
+        mockMvc.post("/api/v1/weights") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", ranchId.toString())
+            contentType = MediaType.TEXT_PLAIN
+            content = "invalid"
+        }.andExpect {
+            status { isUnsupportedMediaType() }
+        }
+
+        mockMvc.delete("/api/v1/weights") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", ranchId.toString())
+        }.andExpect {
+            status { isMethodNotAllowed() }
         }
     }
 
@@ -84,6 +189,7 @@ class WeightsControllerTest {
             .willThrow(DomainValidationException("SCROTAL_FEMALE_NOT_ALLOWED", "Circunferencia escrotal solo aplica a machos."))
 
         mockMvc.post("/api/v1/weights") {
+            principal = ownerPrincipal
             header("X-Active-Ranch-Id", ranchId.toString())
             contentType = MediaType.APPLICATION_JSON
             content = """
@@ -125,6 +231,7 @@ class WeightsControllerTest {
         )
 
         mockMvc.post("/api/v1/weights") {
+            principal = ownerPrincipal
             header("X-Active-Ranch-Id", ranchId.toString())
             contentType = MediaType.APPLICATION_JSON
             content = """
@@ -172,6 +279,7 @@ class WeightsControllerTest {
         )
 
         mockMvc.get("/api/v1/animals/$animalId/weights") {
+            principal = ownerPrincipal
             header("X-Active-Ranch-Id", ranchId.toString())
         }.andExpect {
             status { isOk() }
@@ -213,6 +321,7 @@ class WeightsControllerTest {
         )
 
         mockMvc.post("/api/v1/animals/$animalId/wean") {
+            principal = ownerPrincipal
             header("X-Active-Ranch-Id", ranchId.toString())
             contentType = MediaType.APPLICATION_JSON
             content = """

@@ -31,6 +31,13 @@ class RegisterWeightUseCase(
 ) {
     @Transactional
     fun execute(command: RegisterWeightCommand): WeightMeasurement {
+        if (command.id != null && weightPort.existsById(command.id)) {
+            throw BusinessConflictException(
+                code = "WEIGHT_ID_ALREADY_EXISTS",
+                message = "Ya existe un pesaje registrado con el identificador proporcionado.",
+            )
+        }
+
         val animal = animalPort.findByIdAndRanchId(command.animalId, command.ranchId)
             ?: throw ResourceNotFoundException("ANIMAL_NOT_FOUND", "Ejemplar no encontrado en el rancho activo.")
 
@@ -54,6 +61,6 @@ class RegisterWeightUseCase(
             scrotalCircumferenceCm = command.scrotalCircumferenceCm,
             date = command.date,
         )
-        return weightPort.save(measurement)
+        return weightPort.create(measurement)
     }
 }

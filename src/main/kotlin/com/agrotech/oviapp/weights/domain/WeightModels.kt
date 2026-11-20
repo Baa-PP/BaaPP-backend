@@ -37,19 +37,35 @@ data class WeightMeasurement(
                 message = "El peso debe ser mayor a 0 y menor o igual a $MAX_WEIGHT_KG kg.",
             )
         }
-        if (scrotalCircumferenceCm != null &&
-            (scrotalCircumferenceCm <= BigDecimal.ZERO || scrotalCircumferenceCm > MAX_SCROTAL_CM)
-        ) {
+        if (!hasAtMostTwoDecimals(weightKg)) {
             throw DomainValidationException(
-                code = "INVALID_SCROTAL_CIRCUMFERENCE",
-                message = "La circunferencia escrotal debe ser mayor a 0 y menor o igual a $MAX_SCROTAL_CM cm.",
+                code = "INVALID_WEIGHT_PRECISION",
+                message = "El peso admite como máximo $MAX_DECIMAL_PLACES decimales.",
             )
+        }
+        if (scrotalCircumferenceCm != null) {
+            if (scrotalCircumferenceCm <= BigDecimal.ZERO || scrotalCircumferenceCm > MAX_SCROTAL_CM) {
+                throw DomainValidationException(
+                    code = "INVALID_SCROTAL_CIRCUMFERENCE",
+                    message = "La circunferencia escrotal debe ser mayor a 0 y menor o igual a $MAX_SCROTAL_CM cm.",
+                )
+            }
+            if (!hasAtMostTwoDecimals(scrotalCircumferenceCm)) {
+                throw DomainValidationException(
+                    code = "INVALID_SCROTAL_PRECISION",
+                    message = "La circunferencia escrotal admite como máximo $MAX_DECIMAL_PLACES decimales.",
+                )
+            }
         }
     }
 
     companion object {
+        private const val MAX_DECIMAL_PLACES = 2
         private val MAX_WEIGHT_KG = BigDecimal("999.99")
         private val MAX_SCROTAL_CM = BigDecimal("99.99")
+
+        private fun hasAtMostTwoDecimals(value: BigDecimal): Boolean =
+            value.stripTrailingZeros().scale() <= MAX_DECIMAL_PLACES
     }
 }
 
@@ -88,14 +104,26 @@ object WeightPolicy {
             )
         }
     }
+
+    fun validateWeaningDestination(animalSex: Sex, destination: WeaningDestination) {
+        if (animalSex == Sex.MALE && destination == WeaningDestination.EWE_REPLACEMENT) {
+            throw DomainValidationException(
+                code = "INVALID_WEANING_DESTINATION",
+                message = "Un ejemplar macho (MALE) no puede destinarse a recría de hembra (EWE_REPLACEMENT).",
+            )
+        }
+    }
 }
 
 interface AnimalWeightingPort {
     fun findByIdAndRanchId(animalId: UUID, ranchId: UUID): Animal?
+    fun findByIdAndRanchIdForUpdate(animalId: UUID, ranchId: UUID): Animal?
     fun save(animal: Animal): Animal
 }
 
 interface WeightRepositoryPort {
-    fun save(measurement: WeightMeasurement): WeightMeasurement
+    fun existsById(weightId: UUID): Boolean
+    fun existsWeaningForAnimal(animalId: UUID, ranchId: UUID): Boolean
+    fun create(measurement: WeightMeasurement): WeightMeasurement
     fun findHistoryByAnimalAndRanch(animalId: UUID, ranchId: UUID): List<WeightGainProjection>
 }

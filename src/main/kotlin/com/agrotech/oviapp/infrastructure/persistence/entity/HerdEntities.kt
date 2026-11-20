@@ -3,9 +3,13 @@ package com.agrotech.oviapp.infrastructure.persistence.entity
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.Id
+import jakarta.persistence.PostLoad
+import jakarta.persistence.PostPersist
 import jakarta.persistence.Table
+import jakarta.persistence.Transient
 import org.hibernate.annotations.JdbcTypeCode
 import org.hibernate.type.SqlTypes
+import org.springframework.data.domain.Persistable
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -180,7 +184,7 @@ class AuditoriaPartoEntity(
 class PesajeEntity(
     @Id
     @Column(name = "id", nullable = false, updatable = false)
-    val id: UUID,
+    private val id: UUID,
 
     @Column(name = "animal_id", nullable = false)
     var animalId: UUID,
@@ -202,7 +206,21 @@ class PesajeEntity(
 
     @Column(name = "creado_en", nullable = false, updatable = false)
     val creadoEn: OffsetDateTime = OffsetDateTime.now(),
-)
+) : Persistable<UUID> {
+
+    @Transient
+    private var isNewRecord: Boolean = true
+
+    override fun getId(): UUID = id
+
+    override fun isNew(): Boolean = isNewRecord
+
+    @PostPersist
+    @PostLoad
+    fun markNotNew() {
+        isNewRecord = false
+    }
+}
 
 @Entity
 @Table(name = "mutaciones_procesadas")

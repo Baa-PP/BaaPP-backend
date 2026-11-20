@@ -3,7 +3,7 @@ package com.agrotech.oviapp.weights.presentation
 import com.agrotech.oviapp.domain.exception.DomainValidationException
 import com.agrotech.oviapp.domain.model.AnimalStatus
 import com.agrotech.oviapp.domain.model.LifeStage
-import com.agrotech.oviapp.presentation.security.RanchContextInterceptor
+import com.agrotech.oviapp.presentation.security.RanchAccessAuthorizer
 import com.agrotech.oviapp.weights.application.AnimalWeightHistoryResult
 import com.agrotech.oviapp.weights.application.ConfirmWeaningCommand
 import com.agrotech.oviapp.weights.application.ConfirmWeaningUseCase
@@ -18,9 +18,11 @@ import com.agrotech.oviapp.weights.domain.WeightMilestone
 import jakarta.validation.Valid
 import jakarta.validation.constraints.DecimalMax
 import jakarta.validation.constraints.DecimalMin
+import jakarta.validation.constraints.Digits
 import jakarta.validation.constraints.NotNull
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -40,9 +42,11 @@ data class RegisterWeightRequest(
     @field:NotNull
     @field:DecimalMin("0.01")
     @field:DecimalMax("999.99")
+    @field:Digits(integer = 4, fraction = 2)
     val weightKg: BigDecimal?,
     @field:DecimalMin("0.01")
     @field:DecimalMax("99.99")
+    @field:Digits(integer = 3, fraction = 2)
     val scrotalCircumferenceCm: BigDecimal? = null,
     @field:NotNull
     val date: LocalDate?,
@@ -87,11 +91,13 @@ data class ConfirmWeaningRequest(
     @field:NotNull
     @field:DecimalMin("0.01")
     @field:DecimalMax("999.99")
+    @field:Digits(integer = 4, fraction = 2)
     val weaningWeightKg: BigDecimal?,
     @field:NotNull
     val destination: WeaningDestination?,
     @field:DecimalMin("0.01")
     @field:DecimalMax("99.99")
+    @field:Digits(integer = 3, fraction = 2)
     val scrotalCircumferenceCm: BigDecimal? = null,
 )
 
@@ -108,6 +114,7 @@ data class ConfirmWeaningResponse(
 @RestController
 @RequestMapping("/api/v1")
 class WeightsController(
+    private val ranchAccessAuthorizer: RanchAccessAuthorizer,
     private val registerWeightUseCase: RegisterWeightUseCase,
     private val getAnimalWeightsUseCase: GetAnimalWeightsUseCase,
     private val confirmWeaningUseCase: ConfirmWeaningUseCase,
@@ -115,9 +122,10 @@ class WeightsController(
 
     @PostMapping("/weights")
     fun registerWeight(
+        authentication: Authentication?,
         @Valid @RequestBody request: RegisterWeightRequest,
     ): ResponseEntity<WeightMeasurementResponse> {
-        val ranchId = requireActiveRanchId()
+        val ranchId = ranchAccessAuthorizer.requireAuthorizedRanchId(authentication)
         val measurement = registerWeightUseCase.execute(
             RegisterWeightCommand(
                 id = request.id,
@@ -133,17 +141,21 @@ class WeightsController(
     }
 
     @GetMapping("/animals/{id}/weights")
-    fun getAnimalWeights(@PathVariable("id") animalId: UUID): AnimalWeightHistoryResponse {
-        val ranchId = requireActiveRanchId()
+    fun getAnimalWeights(
+        authentication: Authentication?,
+        @PathVariable("id") animalId: UUID,
+    ): AnimalWeightHistoryResponse {
+        val ranchId = ranchAccessAuthorizer.requireAuthorizedRanchId(authentication)
         return getAnimalWeightsUseCase.execute(ranchId = ranchId, animalId = animalId).toResponse()
     }
 
     @PostMapping("/animals/{id}/wean")
     fun confirmWeaning(
+        authentication: Authentication?,
         @PathVariable("id") animalId: UUID,
         @Valid @RequestBody request: ConfirmWeaningRequest,
     ): ConfirmWeaningResponse {
-        val ranchId = requireActiveRanchId()
+        val ranchId = ranchAccessAuthorizer.requireAuthorizedRanchId(authentication)
         return confirmWeaningUseCase.execute(
             ConfirmWeaningCommand(
                 ranchId = ranchId,
@@ -159,14 +171,6 @@ class WeightsController(
 
     private fun invalidPayload(field: String) =
         DomainValidationException("VALIDATION_ERROR", "Campo obligatorio faltante: $field.")
-
-    private fun requireActiveRanchId(): UUID {
-        val raw = RanchContextInterceptor.currentRanchId()
-            ?: throw DomainValidationException("MISSING_RANCH_CONTEXT", "Encabezado X-Active-Ranch-Id requerido.")
-        return runCatching { UUID.fromString(raw) }.getOrElse {
-            throw DomainValidationException("INVALID_RANCH_CONTEXT", "Encabezado X-Active-Ranch-Id inválido.")
-        }
-    }
 
     private fun WeightMeasurement.toResponse() = WeightMeasurementResponse(
         id = id,

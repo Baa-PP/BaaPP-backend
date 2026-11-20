@@ -19,3 +19,8 @@ class BusinessConflictException(
     code: String,
     message: String,
 ) : DomainException(code, message)
+
+class ForbiddenAccessException(
+    code: String,
+    message: String,
+) : DomainException(code, message)

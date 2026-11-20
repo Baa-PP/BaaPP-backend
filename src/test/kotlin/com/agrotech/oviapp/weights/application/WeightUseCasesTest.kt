@@ -16,6 +16,7 @@ import com.agrotech.oviapp.weights.domain.WeightMilestone
 import com.agrotech.oviapp.weights.domain.WeightRepositoryPort
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -50,6 +51,37 @@ class WeightUseCasesTest {
     }
 
     @Test
+    fun `RegisterWeightUseCase rejects duplicate client-supplied weight ID without overwriting`() {
+        val maleLamb = sampleAnimal(sex = Sex.MALE, stage = LifeStage.LAMB_FATTENING, repro = ReproductiveStatus.EMPTY)
+        val existingId = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        val existingMeasurement = WeightMeasurement(
+            id = existingId,
+            animalId = UUID.randomUUID(),
+            ranchId = UUID.randomUUID(),
+            milestone = WeightMilestone.BIRTH,
+            weightKg = BigDecimal("4.20"),
+            date = LocalDate.of(2026, 7, 1),
+        )
+        val animalPort = FakeAnimalWeightingPort(maleLamb)
+        val weightPort = FakeWeightRepositoryPort(existingMeasurement)
+        val useCase = RegisterWeightUseCase(animalPort, weightPort)
+
+        assertThrows(BusinessConflictException::class.java) {
+            useCase.execute(
+                RegisterWeightCommand(
+                    id = existingId,
+                    ranchId = ranchId,
+                    animalId = maleLamb.id,
+                    milestone = WeightMilestone.EVALUATION,
+                    weightKg = BigDecimal("35.00"),
+                    date = LocalDate.of(2026, 11, 15),
+                ),
+            )
+        }
+        assertEquals(existingMeasurement, weightPort.savedById[existingId])
+    }
+
+    @Test
     fun `RegisterWeightUseCase saves measurement for MALE with scrotal circumference`() {
         val maleLamb = sampleAnimal(sex = Sex.MALE, stage = LifeStage.LAMB_FATTENING, repro = ReproductiveStatus.EMPTY)
         val animalPort = FakeAnimalWeightingPort(maleLamb)
@@ -74,13 +106,18 @@ class WeightUseCasesTest {
     }
 
     @Test
-    fun `GetAnimalWeightsUseCase returns ordered history and computed GDP`() {
+    fun `GetAnimalWeightsUseCase returns ordered history and recomputes predecessor fields after final sort`() {
         val lamb = sampleAnimal(sex = Sex.MALE, stage = LifeStage.LAMB_FATTENING, repro = ReproductiveStatus.EMPTY)
+        val birthId = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val sameDayIdA = UUID.fromString("00000000-0000-0000-0000-000000000002")
+        val sameDayIdB = UUID.fromString("00000000-0000-0000-0000-000000000003")
+
         val animalPort = FakeAnimalWeightingPort(lamb)
         val weightPort = FakeWeightRepositoryPort().apply {
+            // Simulate LAG from DB returning same-date rows in opposite order of weightId
             projections += listOf(
                 WeightGainProjection(
-                    weightId = UUID.randomUUID(),
+                    weightId = birthId,
                     animalId = lamb.id,
                     ranchId = ranchId,
                     folioInterno = lamb.folioInterno,
@@ -94,7 +131,21 @@ class WeightUseCasesTest {
                     dailyGainGrams = null,
                 ),
                 WeightGainProjection(
-                    weightId = UUID.randomUUID(),
+                    weightId = sameDayIdB,
+                    animalId = lamb.id,
+                    ranchId = ranchId,
+                    folioInterno = lamb.folioInterno,
+                    milestone = WeightMilestone.EVALUATION,
+                    date = LocalDate.of(2026, 9, 14),
+                    ageDays = 75,
+                    weightKg = BigDecimal("23.00"),
+                    previousWeightKg = BigDecimal("4.00"),
+                    daysSincePrevious = 75,
+                    gainKg = BigDecimal("19.00"),
+                    dailyGainGrams = 253L,
+                ),
+                WeightGainProjection(
+                    weightId = sameDayIdA,
                     animalId = lamb.id,
                     ranchId = ranchId,
                     folioInterno = lamb.folioInterno,
@@ -102,10 +153,10 @@ class WeightUseCasesTest {
                     date = LocalDate.of(2026, 9, 14),
                     ageDays = 75,
                     weightKg = BigDecimal("22.75"),
-                    previousWeightKg = BigDecimal("4.00"),
-                    daysSincePrevious = 75,
-                    gainKg = BigDecimal("18.75"),
-                    dailyGainGrams = 250L,
+                    previousWeightKg = BigDecimal("23.00"),
+                    daysSincePrevious = 0,
+                    gainKg = BigDecimal("-0.25"),
+                    dailyGainGrams = null,
                 ),
             )
         }
@@ -113,13 +164,27 @@ class WeightUseCasesTest {
 
         val history = useCase.execute(ranchId = ranchId, animalId = lamb.id)
 
-        assertEquals(2, history.weights.size)
-        assertEquals(WeightMilestone.BIRTH, history.weights[0].milestone)
-        assertEquals(WeightMilestone.WEANING, history.weights[1].milestone)
+        assertEquals(3, history.weights.size)
+        // Sorted by (date, weightId): birthId -> sameDayIdA -> sameDayIdB
+        assertEquals(birthId, history.weights[0].id)
+        assertNull(history.weights[0].previousWeightKg)
+
+        assertEquals(sameDayIdA, history.weights[1].id)
+        assertEquals(BigDecimal("4.00"), history.weights[1].previousWeightKg)
+        assertEquals(75, history.weights[1].daysSincePrevious)
+        assertEquals(BigDecimal("18.75"), history.weights[1].gainKg)
         assertEquals(BigDecimal("0.2500"), history.weights[1].dailyGainKg)
         assertEquals(250L, history.weights[1].dailyGainGrams)
-        assertEquals(250L, history.overallDailyGainGrams)
-        assertEquals(BigDecimal("22.75"), history.latestWeightKg)
+
+        assertEquals(sameDayIdB, history.weights[2].id)
+        assertEquals(BigDecimal("22.75"), history.weights[2].previousWeightKg)
+        assertEquals(0, history.weights[2].daysSincePrevious)
+        assertEquals(BigDecimal("0.25"), history.weights[2].gainKg)
+        assertNull(history.weights[2].dailyGainKg)
+        assertNull(history.weights[2].dailyGainGrams)
+
+        assertEquals(253L, history.overallDailyGainGrams)
+        assertEquals(BigDecimal("23.00"), history.latestWeightKg)
     }
 
     @Test
@@ -131,7 +196,7 @@ class WeightUseCasesTest {
     }
 
     @Test
-    fun `ConfirmWeaningUseCase saves WEANING weight, updates lamb destination and transitions mother to EMPTY`() {
+    fun `ConfirmWeaningUseCase locks lamb and mother, saves WEANING weight, updates lamb destination and transitions mother to EMPTY`() {
         val mother = sampleAnimal(
             folio = "M-01",
             sex = Sex.FEMALE,
@@ -164,6 +229,8 @@ class WeightUseCasesTest {
         val updatedLamb = animalPort.findByIdAndRanchId(lamb.id, ranchId)!!
         val updatedMother = animalPort.findByIdAndRanchId(mother.id, ranchId)!!
 
+        assertTrue(animalPort.lockedIds.contains(lamb.id))
+        assertTrue(animalPort.lockedIds.contains(mother.id))
         assertEquals(LocalDate.of(2026, 9, 14), updatedLamb.weaningDate)
         assertEquals(LifeStage.EWE_REPLACEMENT, updatedLamb.lifeStage)
         assertEquals(AnimalStatus.ACTIVE, updatedLamb.status)
@@ -172,6 +239,67 @@ class WeightUseCasesTest {
         assertEquals(1, weightPort.saved.size)
         assertEquals(WeightMilestone.WEANING, weightPort.saved.first().milestone)
         assertEquals(BigDecimal("19.80"), weightPort.saved.first().weightKg)
+    }
+
+    @Test
+    fun `ConfirmWeaningUseCase rejects EWE_REPLACEMENT for MALE lamb before saving weight`() {
+        val maleLamb = sampleAnimal(
+            folio = "C-M1",
+            sex = Sex.MALE,
+            stage = LifeStage.LAMB_LACTATING,
+            repro = ReproductiveStatus.EMPTY,
+        )
+        val animalPort = FakeAnimalWeightingPort(maleLamb)
+        val weightPort = FakeWeightRepositoryPort()
+        val useCase = ConfirmWeaningUseCase(animalPort, weightPort)
+
+        assertThrows(DomainValidationException::class.java) {
+            useCase.execute(
+                ConfirmWeaningCommand(
+                    ranchId = ranchId,
+                    animalId = maleLamb.id,
+                    weaningDate = LocalDate.of(2026, 9, 14),
+                    weaningWeightKg = BigDecimal("21.00"),
+                    destination = WeaningDestination.EWE_REPLACEMENT,
+                ),
+            )
+        }
+        assertTrue(weightPort.saved.isEmpty())
+    }
+
+    @Test
+    fun `ConfirmWeaningUseCase rejects duplicate client-supplied weightId`() {
+        val lamb = sampleAnimal(
+            sex = Sex.MALE,
+            stage = LifeStage.LAMB_LACTATING,
+            repro = ReproductiveStatus.EMPTY,
+        )
+        val existingId = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+        val existingMeasurement = WeightMeasurement(
+            id = existingId,
+            animalId = UUID.randomUUID(),
+            ranchId = UUID.randomUUID(),
+            milestone = WeightMilestone.BIRTH,
+            weightKg = BigDecimal("4.00"),
+            date = LocalDate.of(2026, 7, 1),
+        )
+        val useCase = ConfirmWeaningUseCase(
+            FakeAnimalWeightingPort(lamb),
+            FakeWeightRepositoryPort(existingMeasurement),
+        )
+
+        assertThrows(BusinessConflictException::class.java) {
+            useCase.execute(
+                ConfirmWeaningCommand(
+                    ranchId = ranchId,
+                    animalId = lamb.id,
+                    weaningDate = LocalDate.of(2026, 9, 14),
+                    weaningWeightKg = BigDecimal("20.00"),
+                    destination = WeaningDestination.LAMB_FATTENING,
+                    weightId = existingId,
+                ),
+            )
+        }
     }
 
     @Test
@@ -259,9 +387,15 @@ class WeightUseCasesTest {
 
     private class FakeAnimalWeightingPort(vararg initial: Animal) : AnimalWeightingPort {
         private val store = initial.associateBy { it.id }.toMutableMap()
+        val lockedIds = mutableSetOf<UUID>()
 
         override fun findByIdAndRanchId(animalId: UUID, ranchId: UUID): Animal? =
             store[animalId]?.takeIf { it.ranchId == ranchId }
+
+        override fun findByIdAndRanchIdForUpdate(animalId: UUID, ranchId: UUID): Animal? {
+            lockedIds += animalId
+            return findByIdAndRanchId(animalId, ranchId)
+        }
 
         override fun save(animal: Animal): Animal {
             store[animal.id] = animal
@@ -269,12 +403,22 @@ class WeightUseCasesTest {
         }
     }
 
-    private class FakeWeightRepositoryPort : WeightRepositoryPort {
+    private class FakeWeightRepositoryPort(vararg initial: WeightMeasurement) : WeightRepositoryPort {
         val saved = mutableListOf<WeightMeasurement>()
+        val savedById = initial.associateBy { it.id }.toMutableMap()
         val projections = mutableListOf<WeightGainProjection>()
 
-        override fun save(measurement: WeightMeasurement): WeightMeasurement {
+        override fun existsById(weightId: UUID): Boolean = savedById.containsKey(weightId)
+
+        override fun existsWeaningForAnimal(animalId: UUID, ranchId: UUID): Boolean =
+            savedById.values.any { it.animalId == animalId && it.ranchId == ranchId && it.milestone == WeightMilestone.WEANING }
+
+        override fun create(measurement: WeightMeasurement): WeightMeasurement {
+            if (savedById.containsKey(measurement.id)) {
+                throw BusinessConflictException("WEIGHT_ID_ALREADY_EXISTS", "Ya existe un pesaje con ese id.")
+            }
             saved += measurement
+            savedById[measurement.id] = measurement
             return measurement
         }
 

@@ -44,13 +44,21 @@ class ConfirmWeaningUseCase(
 ) {
     @Transactional
     fun execute(command: ConfirmWeaningCommand): WeaningResult {
-        val lamb = animalPort.findByIdAndRanchId(command.animalId, command.ranchId)
+        if (command.weightId != null && weightPort.existsById(command.weightId)) {
+            throw BusinessConflictException(
+                code = "WEIGHT_ID_ALREADY_EXISTS",
+                message = "Ya existe un pesaje registrado con el identificador proporcionado.",
+            )
+        }
+
+        // Serialize concurrent weaning requests per animal row
+        val lamb = animalPort.findByIdAndRanchIdForUpdate(command.animalId, command.ranchId)
             ?: throw ResourceNotFoundException("ANIMAL_NOT_FOUND", "Cría no encontrada en el rancho activo.")
 
         if (lamb.status != AnimalStatus.ACTIVE) {
             throw BusinessConflictException("ANIMAL_NOT_ACTIVE", "Solo se puede destetar un ejemplar en estado ACTIVE.")
         }
-        if (lamb.weaningDate != null) {
+        if (lamb.weaningDate != null || weightPort.existsWeaningForAnimal(lamb.id, command.ranchId)) {
             throw BusinessConflictException("ANIMAL_ALREADY_WEANED", "El ejemplar ya cuenta con destete registrado.")
         }
 
@@ -60,8 +68,9 @@ class ConfirmWeaningUseCase(
             weightDate = command.weaningDate,
             scrotalCircumferenceCm = command.scrotalCircumferenceCm,
         )
+        WeightPolicy.validateWeaningDestination(lamb.sex, command.destination)
 
-        val weaningMeasurement = weightPort.save(
+        val weaningMeasurement = weightPort.create(
             WeightMeasurement(
                 id = command.weightId ?: UUID.randomUUID(),
                 animalId = lamb.id,
@@ -88,7 +97,7 @@ class ConfirmWeaningUseCase(
         )
 
         val motherTransitioned = lamb.damId?.let { damId ->
-            val mother = animalPort.findByIdAndRanchId(damId, command.ranchId)
+            val mother = animalPort.findByIdAndRanchIdForUpdate(damId, command.ranchId)
             if (mother != null && mother.reproductiveStatus == ReproductiveStatus.LACTATING) {
                 animalPort.save(mother.copy(reproductiveStatus = ReproductiveStatus.EMPTY))
                 true

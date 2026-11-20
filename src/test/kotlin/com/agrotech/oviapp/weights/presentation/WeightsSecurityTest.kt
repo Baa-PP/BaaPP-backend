@@ -1,6 +1,8 @@
 package com.agrotech.oviapp.weights.presentation
 
+import com.agrotech.oviapp.domain.port.RanchMembershipPort
 import com.agrotech.oviapp.presentation.GlobalExceptionHandler
+import com.agrotech.oviapp.presentation.security.RanchAccessAuthorizer
 import com.agrotech.oviapp.presentation.security.RanchContextInterceptor
 import com.agrotech.oviapp.presentation.security.SecurityConfig
 import com.agrotech.oviapp.presentation.security.WebMvcConfig
@@ -19,7 +21,13 @@ import org.springframework.test.web.servlet.post
 import java.util.UUID
 
 @WebMvcTest(WeightsController::class)
-@Import(SecurityConfig::class, RanchContextInterceptor::class, WebMvcConfig::class, GlobalExceptionHandler::class)
+@Import(
+    SecurityConfig::class,
+    RanchContextInterceptor::class,
+    WebMvcConfig::class,
+    GlobalExceptionHandler::class,
+    RanchAccessAuthorizer::class,
+)
 class WeightsSecurityTest {
 
     @Autowired
@@ -33,6 +41,9 @@ class WeightsSecurityTest {
 
     @MockitoBean
     private lateinit var confirmWeaningUseCase: ConfirmWeaningUseCase
+
+    @MockitoBean
+    private lateinit var ranchMembershipPort: RanchMembershipPort
 
     private val animalId = UUID.fromString("22222222-2222-2222-2222-222222222222")
 

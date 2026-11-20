@@ -96,4 +96,53 @@ class WeightPolicyAndCalculatorTest {
             )
         }
     }
+
+    @Test
+    fun `rejects more than two decimal places on weight and scrotal circumference while keeping exact two decimals`() {
+        val valid = WeightMeasurement(
+            id = UUID.randomUUID(),
+            animalId = UUID.randomUUID(),
+            ranchId = UUID.randomUUID(),
+            milestone = WeightMilestone.DAY_120,
+            weightKg = BigDecimal("12.34"),
+            scrotalCircumferenceCm = BigDecimal("21.30"),
+            date = LocalDate.of(2026, 10, 1),
+        )
+        assertEquals(BigDecimal("12.34"), valid.weightKg)
+
+        assertThrows(DomainValidationException::class.java) {
+            WeightMeasurement(
+                id = UUID.randomUUID(),
+                animalId = UUID.randomUUID(),
+                ranchId = UUID.randomUUID(),
+                milestone = WeightMilestone.DAY_120,
+                weightKg = BigDecimal("12.345"),
+                scrotalCircumferenceCm = null,
+                date = LocalDate.of(2026, 10, 1),
+            )
+        }
+
+        assertThrows(DomainValidationException::class.java) {
+            WeightMeasurement(
+                id = UUID.randomUUID(),
+                animalId = UUID.randomUUID(),
+                ranchId = UUID.randomUUID(),
+                milestone = WeightMilestone.DAY_120,
+                weightKg = BigDecimal("12.34"),
+                scrotalCircumferenceCm = BigDecimal("21.345"),
+                date = LocalDate.of(2026, 10, 1),
+            )
+        }
+    }
+
+    @Test
+    fun `rejects EWE_REPLACEMENT weaning destination for MALE lambs and allows valid combinations`() {
+        assertThrows(DomainValidationException::class.java) {
+            WeightPolicy.validateWeaningDestination(Sex.MALE, WeaningDestination.EWE_REPLACEMENT)
+        }
+
+        WeightPolicy.validateWeaningDestination(Sex.FEMALE, WeaningDestination.EWE_REPLACEMENT)
+        WeightPolicy.validateWeaningDestination(Sex.MALE, WeaningDestination.LAMB_FATTENING)
+        WeightPolicy.validateWeaningDestination(Sex.MALE, WeaningDestination.SOLD)
+    }
 }

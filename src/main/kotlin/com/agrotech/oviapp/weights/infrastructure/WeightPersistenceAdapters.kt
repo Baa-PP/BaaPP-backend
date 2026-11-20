@@ -1,5 +1,6 @@
 package com.agrotech.oviapp.weights.infrastructure
 
+import com.agrotech.oviapp.domain.exception.BusinessConflictException
 import com.agrotech.oviapp.domain.model.Animal
 import com.agrotech.oviapp.domain.model.AnimalStatus
 import com.agrotech.oviapp.domain.model.ConceptionMethod
@@ -14,7 +15,10 @@ import com.agrotech.oviapp.weights.domain.WeightGainProjection
 import com.agrotech.oviapp.weights.domain.WeightMeasurement
 import com.agrotech.oviapp.weights.domain.WeightMilestone
 import com.agrotech.oviapp.weights.domain.WeightRepositoryPort
+import jakarta.persistence.LockModeType
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Component
@@ -25,6 +29,13 @@ import java.util.UUID
 
 interface AnimalWeightingJpaRepository : JpaRepository<AnimalEntity, UUID> {
     fun findByIdAndRanchoId(id: UUID, ranchoId: UUID): AnimalEntity?
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT a FROM AnimalEntity a WHERE a.id = :id AND a.ranchoId = :ranchoId")
+    fun findByIdAndRanchoIdForUpdate(
+        @Param("id") id: UUID,
+        @Param("ranchoId") ranchoId: UUID,
+    ): AnimalEntity?
 }
 
 interface PesajeGananciaViewRow {
@@ -43,6 +54,8 @@ interface PesajeGananciaViewRow {
 }
 
 interface PesajeJpaRepository : JpaRepository<PesajeEntity, UUID> {
+    fun existsByAnimalIdAndRanchoIdAndHito(animalId: UUID, ranchoId: UUID, hito: String): Boolean
+
     @Query(
         value = """
             SELECT pesaje_id AS pesajeId,
@@ -76,6 +89,9 @@ class AnimalWeightingJpaAdapter(
 
     override fun findByIdAndRanchId(animalId: UUID, ranchId: UUID): Animal? =
         repository.findByIdAndRanchoId(animalId, ranchId)?.toDomain()
+
+    override fun findByIdAndRanchIdForUpdate(animalId: UUID, ranchId: UUID): Animal? =
+        repository.findByIdAndRanchoIdForUpdate(animalId, ranchId)?.toDomain()
 
     override fun save(animal: Animal): Animal {
         val existing = repository.findByIdAndRanchoId(animal.id, animal.ranchId)
@@ -145,20 +161,37 @@ class WeightRepositoryJpaAdapter(
     private val repository: PesajeJpaRepository,
 ) : WeightRepositoryPort {
 
-    override fun save(measurement: WeightMeasurement): WeightMeasurement {
-        val saved = repository.save(
-            PesajeEntity(
-                id = measurement.id,
-                animalId = measurement.animalId,
-                ranchoId = measurement.ranchId,
-                hito = measurement.milestone.name,
-                pesoKg = measurement.weightKg,
-                circunferenciaEscrotalCm = measurement.scrotalCircumferenceCm,
-                fecha = measurement.date,
-            ),
+    override fun existsById(weightId: UUID): Boolean = repository.existsById(weightId)
+
+    override fun existsWeaningForAnimal(animalId: UUID, ranchId: UUID): Boolean =
+        repository.existsByAnimalIdAndRanchoIdAndHito(animalId, ranchId, WeightMilestone.WEANING.name)
+
+    override fun create(measurement: WeightMeasurement): WeightMeasurement {
+        if (repository.existsById(measurement.id)) {
+            throw BusinessConflictException(
+                code = "WEIGHT_ID_ALREADY_EXISTS",
+                message = "Ya existe un pesaje registrado con el identificador proporcionado.",
+            )
+        }
+        val entity = PesajeEntity(
+            id = measurement.id,
+            animalId = measurement.animalId,
+            ranchoId = measurement.ranchId,
+            hito = measurement.milestone.name,
+            pesoKg = measurement.weightKg,
+            circunferenciaEscrotalCm = measurement.scrotalCircumferenceCm,
+            fecha = measurement.date,
         )
+        val saved = try {
+            repository.save(entity)
+        } catch (ex: DataIntegrityViolationException) {
+            throw BusinessConflictException(
+                code = "WEIGHT_ID_ALREADY_EXISTS",
+                message = "Ya existe un pesaje registrado con el identificador proporcionado.",
+            )
+        }
         return WeightMeasurement(
-            id = saved.id,
+            id = saved.getId(),
             animalId = saved.animalId,
             ranchId = saved.ranchoId,
             milestone = WeightMilestone.valueOf(saved.hito),
