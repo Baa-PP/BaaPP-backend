@@ -123,7 +123,8 @@ interface AnimalWeightingPort {
 
 interface WeightRepositoryPort {
     fun existsById(weightId: UUID): Boolean
-    fun existsWeaningForAnimal(animalId: UUID, ranchId: UUID): Boolean
+    /** Returns accepted weaning measurements, newest date first, then highest ID. */
+    fun findWeaningForAnimal(animalId: UUID, ranchId: UUID): List<WeightMeasurement>
     fun create(measurement: WeightMeasurement): WeightMeasurement
     fun findHistoryByAnimalAndRanch(animalId: UUID, ranchId: UUID): List<WeightGainProjection>
 }

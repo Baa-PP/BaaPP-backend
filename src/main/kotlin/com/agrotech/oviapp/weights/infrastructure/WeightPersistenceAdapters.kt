@@ -16,6 +16,7 @@ import com.agrotech.oviapp.weights.domain.WeightMeasurement
 import com.agrotech.oviapp.weights.domain.WeightMilestone
 import com.agrotech.oviapp.weights.domain.WeightRepositoryPort
 import jakarta.persistence.LockModeType
+import org.hibernate.exception.ConstraintViolationException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
@@ -54,7 +55,11 @@ interface PesajeGananciaViewRow {
 }
 
 interface PesajeJpaRepository : JpaRepository<PesajeEntity, UUID> {
-    fun existsByAnimalIdAndRanchoIdAndHito(animalId: UUID, ranchoId: UUID, hito: String): Boolean
+    fun findByAnimalIdAndRanchoIdAndHitoOrderByFechaDescIdDesc(
+        animalId: UUID,
+        ranchoId: UUID,
+        hito: String,
+    ): List<PesajeEntity>
 
     @Query(
         value = """
@@ -163,8 +168,9 @@ class WeightRepositoryJpaAdapter(
 
     override fun existsById(weightId: UUID): Boolean = repository.existsById(weightId)
 
-    override fun existsWeaningForAnimal(animalId: UUID, ranchId: UUID): Boolean =
-        repository.existsByAnimalIdAndRanchoIdAndHito(animalId, ranchId, WeightMilestone.WEANING.name)
+    override fun findWeaningForAnimal(animalId: UUID, ranchId: UUID): List<WeightMeasurement> =
+        repository.findByAnimalIdAndRanchoIdAndHitoOrderByFechaDescIdDesc(animalId, ranchId, WeightMilestone.WEANING.name)
+            .map { it.toDomain() }
 
     override fun create(measurement: WeightMeasurement): WeightMeasurement {
         if (repository.existsById(measurement.id)) {
@@ -183,23 +189,29 @@ class WeightRepositoryJpaAdapter(
             fecha = measurement.date,
         )
         val saved = try {
-            repository.save(entity)
+            repository.saveAndFlush(entity)
         } catch (ex: DataIntegrityViolationException) {
+            val duplicateId = generateSequence(ex.cause) { it.cause }
+                .filterIsInstance<ConstraintViolationException>()
+                .any { it.sqlState == "23505" && it.constraintName == "pesajes_pkey" }
+            if (!duplicateId) throw ex
             throw BusinessConflictException(
                 code = "WEIGHT_ID_ALREADY_EXISTS",
                 message = "Ya existe un pesaje registrado con el identificador proporcionado.",
             )
         }
-        return WeightMeasurement(
-            id = saved.getId(),
-            animalId = saved.animalId,
-            ranchId = saved.ranchoId,
-            milestone = WeightMilestone.valueOf(saved.hito),
-            weightKg = saved.pesoKg,
-            scrotalCircumferenceCm = saved.circunferenciaEscrotalCm,
-            date = saved.fecha,
-        )
+        return saved.toDomain()
     }
+
+    private fun PesajeEntity.toDomain() = WeightMeasurement(
+        id = getId(),
+        animalId = animalId,
+        ranchId = ranchoId,
+        milestone = WeightMilestone.valueOf(hito),
+        weightKg = pesoKg,
+        scrotalCircumferenceCm = circunferenciaEscrotalCm,
+        date = fecha,
+    )
 
     override fun findHistoryByAnimalAndRanch(animalId: UUID, ranchId: UUID): List<WeightGainProjection> =
         repository.findWeightHistoryFromView(animalId, ranchId).map { row ->

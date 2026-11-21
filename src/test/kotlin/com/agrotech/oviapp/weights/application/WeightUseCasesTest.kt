@@ -20,6 +20,8 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.util.UUID
@@ -241,6 +243,52 @@ class WeightUseCasesTest {
         assertEquals(BigDecimal("19.80"), weightPort.saved.first().weightKg)
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun `confirmation reuses a registered weaning weight and completes weaning once`(includeWeightId: Boolean) {
+        val mother = sampleAnimal(sex = Sex.FEMALE, stage = LifeStage.ADULT, repro = ReproductiveStatus.LACTATING)
+        val lamb = sampleAnimal(
+            sex = Sex.MALE,
+            stage = LifeStage.LAMB_LACTATING,
+            repro = ReproductiveStatus.EMPTY,
+            damId = mother.id,
+        )
+        val animals = FakeAnimalWeightingPort(mother, lamb)
+        val weights = FakeWeightRepositoryPort()
+        val registeredWeight = RegisterWeightUseCase(animals, weights).execute(
+            RegisterWeightCommand(
+                ranchId = ranchId,
+                animalId = lamb.id,
+                milestone = WeightMilestone.WEANING,
+                weightKg = BigDecimal("21.00"),
+                date = LocalDate.of(2026, 9, 14),
+            ),
+        )
+        val command = ConfirmWeaningCommand(
+            ranchId = ranchId,
+            animalId = lamb.id,
+            weaningDate = registeredWeight.date.plusDays(1),
+            weaningWeightKg = BigDecimal("22.00"),
+            destination = WeaningDestination.LAMB_FATTENING,
+            weightId = registeredWeight.id.takeIf { includeWeightId },
+        )
+        val useCase = ConfirmWeaningUseCase(animals, weights)
+
+        val result = useCase.execute(command)
+
+        assertEquals(registeredWeight, result.weaningWeight)
+        assertEquals(registeredWeight.date, result.weaningDate)
+        val updatedLamb = animals.findByIdAndRanchId(lamb.id, ranchId)
+        assertEquals(registeredWeight.date, updatedLamb?.weaningDate)
+        assertEquals(LifeStage.LAMB_FATTENING, updatedLamb?.lifeStage)
+        assertEquals(ReproductiveStatus.EMPTY, animals.findByIdAndRanchId(mother.id, ranchId)?.reproductiveStatus)
+        assertTrue(result.motherTransitionedToEmpty)
+        assertEquals("ANIMAL_ALREADY_WEANED", assertThrows(BusinessConflictException::class.java) {
+            useCase.execute(command)
+        }.code)
+        assertEquals(listOf(registeredWeight), weights.saved)
+    }
+
     @Test
     fun `ConfirmWeaningUseCase rejects EWE_REPLACEMENT for MALE lamb before saving weight`() {
         val maleLamb = sampleAnimal(
@@ -410,8 +458,10 @@ class WeightUseCasesTest {
 
         override fun existsById(weightId: UUID): Boolean = savedById.containsKey(weightId)
 
-        override fun existsWeaningForAnimal(animalId: UUID, ranchId: UUID): Boolean =
-            savedById.values.any { it.animalId == animalId && it.ranchId == ranchId && it.milestone == WeightMilestone.WEANING }
+        override fun findWeaningForAnimal(animalId: UUID, ranchId: UUID): List<WeightMeasurement> =
+            savedById.values
+                .filter { it.animalId == animalId && it.ranchId == ranchId && it.milestone == WeightMilestone.WEANING }
+                .sortedWith(compareByDescending<WeightMeasurement> { it.date }.thenByDescending { it.id })
 
         override fun create(measurement: WeightMeasurement): WeightMeasurement {
             if (savedById.containsKey(measurement.id)) {

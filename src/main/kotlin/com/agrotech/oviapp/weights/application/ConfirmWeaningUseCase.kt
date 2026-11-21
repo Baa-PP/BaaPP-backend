@@ -44,33 +44,41 @@ class ConfirmWeaningUseCase(
 ) {
     @Transactional
     fun execute(command: ConfirmWeaningCommand): WeaningResult {
-        if (command.weightId != null && weightPort.existsById(command.weightId)) {
+        // Serialize concurrent weaning requests per animal row
+        val lamb = animalPort.findByIdAndRanchIdForUpdate(command.animalId, command.ranchId)
+            ?: throw ResourceNotFoundException("ANIMAL_NOT_FOUND", "Cría no encontrada en el rancho activo.")
+
+        if (lamb.weaningDate != null) {
+            throw BusinessConflictException("ANIMAL_ALREADY_WEANED", "El ejemplar ya cuenta con destete registrado.")
+        }
+        if (lamb.status != AnimalStatus.ACTIVE) {
+            throw BusinessConflictException("ANIMAL_NOT_ACTIVE", "Solo se puede destetar un ejemplar en estado ACTIVE.")
+        }
+
+        val existingWeights = weightPort.findWeaningForAnimal(lamb.id, command.ranchId)
+        val requestedWeight = existingWeights.firstOrNull { it.id == command.weightId }
+        if (requestedWeight == null && command.weightId != null && weightPort.existsById(command.weightId)) {
             throw BusinessConflictException(
                 code = "WEIGHT_ID_ALREADY_EXISTS",
                 message = "Ya existe un pesaje registrado con el identificador proporcionado.",
             )
         }
-
-        // Serialize concurrent weaning requests per animal row
-        val lamb = animalPort.findByIdAndRanchIdForUpdate(command.animalId, command.ranchId)
-            ?: throw ResourceNotFoundException("ANIMAL_NOT_FOUND", "Cría no encontrada en el rancho activo.")
-
-        if (lamb.status != AnimalStatus.ACTIVE) {
-            throw BusinessConflictException("ANIMAL_NOT_ACTIVE", "Solo se puede destetar un ejemplar en estado ACTIVE.")
-        }
-        if (lamb.weaningDate != null || weightPort.existsWeaningForAnimal(lamb.id, command.ranchId)) {
-            throw BusinessConflictException("ANIMAL_ALREADY_WEANED", "El ejemplar ya cuenta con destete registrado.")
-        }
+        val existingWeight = requestedWeight ?: existingWeights.firstOrNull()
+        val weaningDate = existingWeight?.date ?: command.weaningDate
 
         WeightPolicy.validateForAnimal(
             animalSex = lamb.sex,
             birthDate = lamb.birthDate,
-            weightDate = command.weaningDate,
-            scrotalCircumferenceCm = command.scrotalCircumferenceCm,
+            weightDate = weaningDate,
+            scrotalCircumferenceCm = if (existingWeight != null) {
+                existingWeight.scrotalCircumferenceCm
+            } else {
+                command.scrotalCircumferenceCm
+            },
         )
         WeightPolicy.validateWeaningDestination(lamb.sex, command.destination)
 
-        val weaningMeasurement = weightPort.create(
+        val weaningMeasurement = existingWeight ?: weightPort.create(
             WeightMeasurement(
                 id = command.weightId ?: UUID.randomUUID(),
                 animalId = lamb.id,
@@ -78,7 +86,7 @@ class ConfirmWeaningUseCase(
                 milestone = WeightMilestone.WEANING,
                 weightKg = command.weaningWeightKg,
                 scrotalCircumferenceCm = command.scrotalCircumferenceCm,
-                date = command.weaningDate,
+                date = weaningDate,
             ),
         )
 
@@ -90,7 +98,7 @@ class ConfirmWeaningUseCase(
 
         val updatedLamb = animalPort.save(
             lamb.copy(
-                weaningDate = command.weaningDate,
+                weaningDate = weaningDate,
                 lifeStage = updatedStage,
                 status = updatedStatus,
             ),
@@ -108,7 +116,7 @@ class ConfirmWeaningUseCase(
 
         return WeaningResult(
             animalId = updatedLamb.id,
-            weaningDate = command.weaningDate,
+            weaningDate = weaningDate,
             destination = command.destination,
             lifeStage = updatedLamb.lifeStage,
             animalStatus = updatedLamb.status,
