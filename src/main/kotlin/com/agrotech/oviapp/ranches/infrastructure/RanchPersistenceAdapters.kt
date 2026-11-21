@@ -15,9 +15,11 @@ import com.agrotech.oviapp.ranches.domain.RanchRepositoryPort
 import com.agrotech.oviapp.ranches.domain.RanchWorker
 import com.agrotech.oviapp.ranches.domain.RanchWorkerRepositoryPort
 import com.agrotech.oviapp.ranches.domain.WorkerPasswordEncoderPort
+import jakarta.persistence.LockModeType
 import org.hibernate.exception.ConstraintViolationException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
@@ -63,6 +65,15 @@ interface RanchSyncJpaRepository : JpaRepository<MutacionProcesadaEntity, UUID> 
 interface RanchWorkerJpaRepository : JpaRepository<UsuarioEntity, UUID> {
     fun findAllByRanchoIdAndRolOrderByUsuarioAsc(ranchoId: UUID, rol: String): List<UsuarioEntity>
     fun findByIdAndRanchoIdAndRol(id: UUID, ranchoId: UUID, rol: String): UsuarioEntity?
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM UsuarioEntity u WHERE u.id = :id AND u.ranchoId = :ranchoId AND u.rol = :rol")
+    fun findByIdAndRanchoIdAndRolForUpdate(
+        @Param("id") id: UUID,
+        @Param("ranchoId") ranchoId: UUID,
+        @Param("rol") rol: String,
+    ): UsuarioEntity?
+
     fun existsByUsuario(usuario: String): Boolean
 }
 
@@ -170,6 +181,10 @@ class RanchWorkerRepositoryJpaAdapter(
         workerRepository.findByIdAndRanchoIdAndRol(workerId, ranchId, Role.WORKER_BRANCH.name)
             ?.toWorker()
 
+    override fun findByIdAndRanchIdForUpdate(workerId: UUID, ranchId: UUID): RanchWorker? =
+        workerRepository.findByIdAndRanchoIdAndRolForUpdate(workerId, ranchId, Role.WORKER_BRANCH.name)
+            ?.toWorker()
+
     override fun existsByUsername(username: String): Boolean =
         workerRepository.existsByUsuario(username)
 
@@ -197,11 +212,20 @@ class RanchWorkerRepositoryJpaAdapter(
         return saved.toWorker()
     }
 
-    override fun save(worker: RanchWorker): RanchWorker {
-        val existing = workerRepository.findByIdAndRanchoIdAndRol(worker.id, worker.ranchId, Role.WORKER_BRANCH.name)
-            ?: throw IllegalStateException("Worker not found for save")
-        existing.activo = worker.active
-        existing.permisos = worker.permissions
+    override fun updateWorker(
+        workerId: UUID,
+        ranchId: UUID,
+        active: Boolean?,
+        permissions: Map<String, Any?>?,
+    ): RanchWorker? {
+        val existing = workerRepository.findByIdAndRanchoIdAndRolForUpdate(workerId, ranchId, Role.WORKER_BRANCH.name)
+            ?: return null
+        if (active != null) {
+            existing.activo = active
+        }
+        if (permissions != null) {
+            existing.permisos = permissions
+        }
         return workerRepository.save(existing).toWorker()
     }
 

@@ -135,6 +135,10 @@ class RanchAndWorkerUseCasesTest {
         assertThrows(BusinessConflictException::class.java) {
             useCase.execute(CreateRanchWorkerCommand("owner_a", ranchA, "capataz_1", "Password123!", emptyMap()))
         }
+        assertThrows(DomainValidationException::class.java) {
+            useCase.execute(CreateRanchWorkerCommand("owner_a", ranchA, "capataz_3", "á".repeat(37), emptyMap()))
+        }
+        assertFalse(workerRepo.existsByUsername("capataz_3"))
         assertThrows(ForbiddenAccessException::class.java) {
             useCase.execute(CreateRanchWorkerCommand("assoc", ranchA, "capataz_2", "Password123!", emptyMap()))
         }
@@ -165,6 +169,7 @@ class RanchAndWorkerUseCasesTest {
             ),
         )
 
+        assertTrue(workerRepo.lockedIds.contains(workerId))
         assertFalse(updated.active)
         assertEquals(mapOf("read_inventory" to true, "export" to false), updated.permissions)
         assertTrue(workerRepo.revokedTokensForUsers.contains(workerId))
@@ -175,6 +180,41 @@ class RanchAndWorkerUseCasesTest {
         assertThrows(ResourceNotFoundException::class.java) {
             useCase.execute(UpdateRanchWorkerCommand("owner_a", ranchA, UUID.randomUUID(), active = true, permissions = null))
         }
+    }
+
+    @Test
+    fun `UpdateRanchWorkerUseCase permissions-only update does not restore concurrent deactivation`() {
+        val owner = RanchActor(UUID.randomUUID(), "owner_a", Role.OWNER, ranchA, null, active = true)
+        val workerId = UUID.randomUUID()
+        val worker = RanchWorker(
+            id = workerId,
+            ranchId = ranchA,
+            username = "capataz_1",
+            active = true,
+            permissions = mapOf("read_inventory" to true),
+            createdAt = fixedNow,
+        )
+        val workerRepo = FakeRanchWorkerRepositoryPort(worker).apply {
+            onBeforeUpdate = { id ->
+                // Simulate concurrent deactivation occurring between read and write
+                deactivateInStore(id)
+            }
+        }
+        val useCase = UpdateRanchWorkerUseCase(FakeRanchActorPort(owner), workerRepo, clock)
+
+        val updated = useCase.execute(
+            UpdateRanchWorkerCommand(
+                principalIdentifier = "owner_a",
+                ranchId = ranchA,
+                workerId = workerId,
+                active = null,
+                permissions = mapOf("read_inventory" to false),
+            ),
+        )
+
+        assertFalse(updated.active)
+        assertFalse(workerRepo.findByIdAndRanchId(workerId, ranchA)!!.active)
+        assertEquals(mapOf("read_inventory" to false), updated.permissions)
     }
 
     private class FakeRanchActorPort(vararg actors: RanchActor) : RanchActorPort {
@@ -206,12 +246,23 @@ class RanchAndWorkerUseCasesTest {
         private val store = initial.associateBy { it.id }.toMutableMap()
         val hashesById = mutableMapOf<UUID, String>()
         val revokedTokensForUsers = mutableListOf<UUID>()
+        val lockedIds = mutableSetOf<UUID>()
+        var onBeforeUpdate: ((UUID) -> Unit)? = null
+
+        fun deactivateInStore(workerId: UUID) {
+            store[workerId]?.let { store[workerId] = it.copy(active = false) }
+        }
 
         override fun findAllByRanchId(ranchId: UUID): List<RanchWorker> =
             store.values.filter { it.ranchId == ranchId }.sortedBy { it.username }
 
         override fun findByIdAndRanchId(workerId: UUID, ranchId: UUID): RanchWorker? =
             store[workerId]?.takeIf { it.ranchId == ranchId }
+
+        override fun findByIdAndRanchIdForUpdate(workerId: UUID, ranchId: UUID): RanchWorker? {
+            lockedIds += workerId
+            return findByIdAndRanchId(workerId, ranchId)
+        }
 
         override fun existsByUsername(username: String): Boolean =
             store.values.any { it.username == username }
@@ -222,9 +273,20 @@ class RanchAndWorkerUseCasesTest {
             return worker
         }
 
-        override fun save(worker: RanchWorker): RanchWorker {
-            store[worker.id] = worker
-            return worker
+        override fun updateWorker(
+            workerId: UUID,
+            ranchId: UUID,
+            active: Boolean?,
+            permissions: Map<String, Any?>?,
+        ): RanchWorker? {
+            onBeforeUpdate?.invoke(workerId)
+            val current = store[workerId]?.takeIf { it.ranchId == ranchId } ?: return null
+            val next = current.copy(
+                active = active ?: current.active,
+                permissions = permissions ?: current.permissions,
+            )
+            store[workerId] = next
+            return next
         }
 
         override fun revokeActiveRefreshTokens(workerId: UUID, revokedAt: Instant) {

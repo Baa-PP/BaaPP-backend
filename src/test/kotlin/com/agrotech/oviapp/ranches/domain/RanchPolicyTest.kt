@@ -22,6 +22,28 @@ class RanchPolicyTest {
             assertThrows(DomainValidationException::class.java) {
                 RanchPolicy.validateWeaningTargetDays(invalid)
             }
+            assertThrows(DomainValidationException::class.java) {
+                RanchProfile(
+                    id = ranchA,
+                    name = "Rancho",
+                    address = "Dir",
+                    owner = "Dueño",
+                    weaningTargetDays = invalid,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `validateWorkerPassword accepts up to 72 UTF-8 bytes and rejects over 72 bytes`() {
+        RanchPolicy.validateWorkerPassword("a".repeat(72))
+        RanchPolicy.validateWorkerPassword("á".repeat(36)) // 36 * 2 = 72 UTF-8 bytes
+
+        assertThrows(DomainValidationException::class.java) {
+            RanchPolicy.validateWorkerPassword("a".repeat(73))
+        }
+        assertThrows(DomainValidationException::class.java) {
+            RanchPolicy.validateWorkerPassword("á".repeat(37)) // 74 UTF-8 bytes
         }
     }
 

@@ -9,6 +9,7 @@ import jakarta.persistence.PostLoad
 import jakarta.persistence.PostPersist
 import jakarta.persistence.Table
 import jakarta.persistence.Transient
+import org.hibernate.annotations.DynamicUpdate
 import org.hibernate.annotations.JdbcTypeCode
 import org.hibernate.type.SqlTypes
 import org.springframework.data.domain.Persistable
@@ -79,6 +80,7 @@ class AsociacionRanchoEntity(
 )
 
 @Entity
+@DynamicUpdate
 @Table(name = "usuarios")
 class UsuarioEntity(
     @Id

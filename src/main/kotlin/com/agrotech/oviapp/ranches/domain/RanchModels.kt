@@ -22,7 +22,11 @@ data class RanchProfile(
     val owner: String,
     val weaningTargetDays: Int,
     val lastSyncedAt: Instant? = null,
-)
+) {
+    init {
+        RanchPolicy.validateWeaningTargetDays(weaningTargetDays)
+    }
+}
 
 data class RanchWorker(
     val id: UUID,
@@ -35,12 +39,29 @@ data class RanchWorker(
 
 object RanchPolicy {
     val ALLOWED_WEANING_TARGET_DAYS: Set<Int> = setOf(60, 75, 90)
+    private const val MIN_PASSWORD_CHARS = 8
+    private const val MAX_BCRYPT_PASSWORD_BYTES = 72
 
     fun validateWeaningTargetDays(days: Int) {
         if (days !in ALLOWED_WEANING_TARGET_DAYS) {
             throw DomainValidationException(
                 code = "INVALID_WEANING_TARGET_DAYS",
                 message = "La meta de destete debe ser 60, 75 o 90 días.",
+            )
+        }
+    }
+
+    fun validateWorkerPassword(rawPassword: String) {
+        if (rawPassword.isBlank() || rawPassword.length < MIN_PASSWORD_CHARS) {
+            throw DomainValidationException(
+                code = "INVALID_PASSWORD_LENGTH",
+                message = "La contraseña debe tener al menos $MIN_PASSWORD_CHARS caracteres.",
+            )
+        }
+        if (rawPassword.toByteArray(Charsets.UTF_8).size > MAX_BCRYPT_PASSWORD_BYTES) {
+            throw DomainValidationException(
+                code = "INVALID_PASSWORD_LENGTH",
+                message = "La contraseña no debe exceder $MAX_BCRYPT_PASSWORD_BYTES bytes en UTF-8.",
             )
         }
     }
@@ -92,9 +113,15 @@ interface RanchRepositoryPort {
 interface RanchWorkerRepositoryPort {
     fun findAllByRanchId(ranchId: UUID): List<RanchWorker>
     fun findByIdAndRanchId(workerId: UUID, ranchId: UUID): RanchWorker?
+    fun findByIdAndRanchIdForUpdate(workerId: UUID, ranchId: UUID): RanchWorker?
     fun existsByUsername(username: String): Boolean
     fun create(worker: RanchWorker, passwordHash: String): RanchWorker
-    fun save(worker: RanchWorker): RanchWorker
+    fun updateWorker(
+        workerId: UUID,
+        ranchId: UUID,
+        active: Boolean?,
+        permissions: Map<String, Any?>?,
+    ): RanchWorker?
     fun revokeActiveRefreshTokens(workerId: UUID, revokedAt: Instant)
 }
 

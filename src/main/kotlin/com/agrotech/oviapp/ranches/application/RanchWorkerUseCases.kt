@@ -65,6 +65,7 @@ class CreateRanchWorkerUseCase(
         if (normalizedUsername.isBlank()) {
             throw DomainValidationException("VALIDATION_ERROR", "El nombre de usuario es obligatorio.")
         }
+        RanchPolicy.validateWorkerPassword(command.rawPassword)
         if (workerPort.existsByUsername(normalizedUsername)) {
             throw BusinessConflictException("USERNAME_ALREADY_EXISTS", "Ya existe una cuenta con ese usuario.")
         }
@@ -96,15 +97,15 @@ class UpdateRanchWorkerUseCase(
             throw DomainValidationException("VALIDATION_ERROR", "Debe enviar al menos active o permissions para actualizar.")
         }
 
-        val existing = workerPort.findByIdAndRanchId(command.workerId, command.ranchId)
+        val existing = workerPort.findByIdAndRanchIdForUpdate(command.workerId, command.ranchId)
             ?: throw ResourceNotFoundException("WORKER_NOT_FOUND", "Cuenta WORKER_BRANCH no encontrada en el rancho.")
 
-        val updated = workerPort.save(
-            existing.copy(
-                active = command.active ?: existing.active,
-                permissions = command.permissions ?: existing.permissions,
-            ),
-        )
+        val updated = workerPort.updateWorker(
+            workerId = existing.id,
+            ranchId = command.ranchId,
+            active = command.active,
+            permissions = command.permissions,
+        ) ?: throw ResourceNotFoundException("WORKER_NOT_FOUND", "Cuenta WORKER_BRANCH no encontrada en el rancho.")
         if (command.active == false) {
             workerPort.revokeActiveRefreshTokens(updated.id, clock.instant())
         }
