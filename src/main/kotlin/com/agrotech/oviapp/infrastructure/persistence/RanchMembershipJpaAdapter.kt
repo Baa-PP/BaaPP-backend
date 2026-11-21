@@ -25,6 +25,7 @@ class RanchMembershipJpaAdapter(
 
     override fun hasAccess(principalIdentifier: String, ranchId: UUID): Boolean {
         val user = findUser(principalIdentifier) ?: return false
+        if (!user.activo) return false
         val role = runCatching { Role.valueOf(user.rol) }.getOrNull() ?: return false
 
         return when (role) {

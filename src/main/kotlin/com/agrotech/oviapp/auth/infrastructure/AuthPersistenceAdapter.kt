@@ -73,6 +73,7 @@ class AuthUserJpaAdapter(
         ranchId = ranchoId,
         associationId = asociacionId,
         permissions = permisos,
+        active = activo,
     )
 }
 

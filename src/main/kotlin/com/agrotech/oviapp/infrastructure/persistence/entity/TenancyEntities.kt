@@ -83,7 +83,7 @@ class AsociacionRanchoEntity(
 class UsuarioEntity(
     @Id
     @Column(name = "id", nullable = false, updatable = false)
-    val id: UUID,
+    private val id: UUID,
 
     @Column(name = "rancho_id")
     var ranchoId: UUID? = null,
@@ -104,9 +104,26 @@ class UsuarioEntity(
     @Column(name = "permisos", columnDefinition = "jsonb", nullable = false)
     var permisos: Map<String, Any?> = emptyMap(),
 
+    @Column(name = "activo", nullable = false)
+    var activo: Boolean = true,
+
     @Column(name = "creado_en", nullable = false, updatable = false)
     val creadoEn: OffsetDateTime = OffsetDateTime.now(),
-)
+) : Persistable<UUID> {
+
+    @Transient
+    private var isNewRecord: Boolean = true
+
+    override fun getId(): UUID = id
+
+    override fun isNew(): Boolean = isNewRecord
+
+    @PostPersist
+    @PostLoad
+    fun markNotNew() {
+        isNewRecord = false
+    }
+}
 
 @Entity
 @Table(name = "refresh_tokens")
