@@ -1,5 +1,6 @@
 package com.agrotech.oviapp.weights.presentation
 
+import com.agrotech.oviapp.auth.domain.JwtTokenPort
 import com.agrotech.oviapp.domain.exception.DomainValidationException
 import com.agrotech.oviapp.domain.model.AnimalStatus
 import com.agrotech.oviapp.domain.model.LifeStage
@@ -57,6 +58,9 @@ class WeightsControllerTest {
 
     @MockitoBean
     private lateinit var ranchMembershipPort: RanchMembershipPort
+
+    @MockitoBean
+    private lateinit var jwtTokenPort: JwtTokenPort
 
     private val ranchId = UUID.fromString("11111111-1111-1111-1111-111111111111")
     private val otherRanchId = UUID.fromString("99999999-9999-9999-9999-999999999999")

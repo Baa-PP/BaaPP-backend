@@ -24,3 +24,8 @@ class ForbiddenAccessException(
     code: String,
     message: String,
 ) : DomainException(code, message)
+
+class InvalidCredentialsException(
+    code: String,
+    message: String,
+) : DomainException(code, message)
