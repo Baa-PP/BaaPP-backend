@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import java.util.Base64
 import java.util.UUID
 
 class HmacJwtTokenAdapterTest {
@@ -66,7 +67,10 @@ class HmacJwtTokenAdapterTest {
         )
         val token = issuer.issueAccessToken(user)
 
-        val tampered = token.dropLast(1) + if (token.last() == 'A') 'B' else 'A'
+        val parts = token.split('.')
+        val sigBytes = Base64.getUrlDecoder().decode(parts[2])
+        sigBytes[0] = (sigBytes[0].toInt() xor 0x01).toByte()
+        val tampered = "${parts[0]}.${parts[1]}.${Base64.getUrlEncoder().withoutPadding().encodeToString(sigBytes)}"
         assertNull(issuer.verifyAccessToken(tampered))
         assertNull(issuer.verifyAccessToken("not.a.jwt"))
 

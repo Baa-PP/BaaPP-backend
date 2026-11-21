@@ -30,16 +30,16 @@ class RefreshTokenUseCase(
 ) {
     private val secureRandom = SecureRandom()
 
-    @Transactional
+    @Transactional(noRollbackFor = [InvalidCredentialsException::class])
     fun execute(rawRefreshToken: String): RefreshResult {
         if (rawRefreshToken.isBlank()) {
             throw InvalidCredentialsException("INVALID_REFRESH_TOKEN", "Refresh token inválido o expirado.")
         }
 
-        val now = clock.instant()
         val tokenHash = refreshTokenPort.hashToken(rawRefreshToken.trim())
         val stored = refreshTokenPort.findByTokenHashForUpdate(tokenHash)
             ?: throw InvalidCredentialsException("INVALID_REFRESH_TOKEN", "Refresh token inválido o expirado.")
+        val now = clock.instant()
 
         if (stored.isRevoked()) {
             // Reuse of a rotated/revoked token indicates potential theft; revoke all active tokens for this user.
