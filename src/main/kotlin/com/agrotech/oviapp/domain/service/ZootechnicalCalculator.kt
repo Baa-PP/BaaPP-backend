@@ -39,4 +39,26 @@ object ZootechnicalCalculator {
         asFedKgPerDay(dryMatterKgPerDay, dietDryMatterFraction)
             .multiply(pricePerKgAsFed)
             .setScale(2, RoundingMode.HALF_UP)
+
+    fun dailyWeightGainKg(
+        currentWeightKg: BigDecimal,
+        previousWeightKg: BigDecimal,
+        daysElapsed: Long,
+    ): BigDecimal? {
+        if (daysElapsed <= 0L) return null
+        return currentWeightKg.subtract(previousWeightKg)
+            .divide(BigDecimal.valueOf(daysElapsed), 4, RoundingMode.HALF_UP)
+    }
+
+    fun dailyWeightGainGrams(
+        currentWeightKg: BigDecimal,
+        previousWeightKg: BigDecimal,
+        daysElapsed: Long,
+    ): Long? {
+        if (daysElapsed <= 0L) return null
+        return currentWeightKg.subtract(previousWeightKg)
+            .multiply(BigDecimal(1000))
+            .divide(BigDecimal.valueOf(daysElapsed), 0, RoundingMode.HALF_UP)
+            .toLong()
+    }
 }
