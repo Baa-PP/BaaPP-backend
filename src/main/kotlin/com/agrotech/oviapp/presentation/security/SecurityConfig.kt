@@ -8,6 +8,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.HttpStatusEntryPoint
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.CorsConfigurationSource
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
@@ -16,8 +17,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 class SecurityConfig(
     @Value("\${app.cors.allowed-origins:http://localhost:3000}")
     private val allowedOriginsRaw: String,
+    private val jwtAuthenticationFilter: JwtAuthenticationFilter,
 ) {
-    /** Stateless JWT/API security chain; permits health checks and configured web origins. */
+    /** Stateless JWT/API security chain; permits health checks, auth endpoints, and configured web origins. */
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain =
         http
@@ -28,9 +30,15 @@ class SecurityConfig(
                 it.authenticationEntryPoint(HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
             }
             .authorizeHttpRequests { auth ->
-                auth.requestMatchers("/health", "/api/v1/health").permitAll()
+                auth.requestMatchers(
+                    "/health",
+                    "/api/v1/health",
+                    "/api/v1/auth/login",
+                    "/api/v1/auth/refresh",
+                ).permitAll()
                 auth.anyRequest().authenticated()
             }
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
             .build()
 
     @Bean
