@@ -52,7 +52,7 @@ class LoginUseCase(
     fun execute(command: LoginCommand): AuthResult {
         val normalizedUsername = command.username.trim()
         val user = authUserPort.findByUsername(normalizedUsername)
-        if (user == null || !passwordHasher.matches(command.password, user.passwordHash)) {
+        if (user == null || !user.active || !passwordHasher.matches(command.password, user.passwordHash)) {
             throw InvalidCredentialsException("INVALID_CREDENTIALS", "Usuario o contraseña inválidos.")
         }
 

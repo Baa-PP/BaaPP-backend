@@ -1,9 +1,11 @@
 package com.agrotech.oviapp.media.presentation
 
+import com.agrotech.oviapp.auth.domain.JwtTokenPort
 import com.agrotech.oviapp.domain.port.RanchMembershipPort
 import com.agrotech.oviapp.media.application.GeneratePresignedDownloadUseCase
 import com.agrotech.oviapp.media.application.GeneratePresignedUploadUseCase
 import com.agrotech.oviapp.presentation.GlobalExceptionHandler
+import com.agrotech.oviapp.presentation.security.JwtAuthenticationFilter
 import com.agrotech.oviapp.presentation.security.RanchAccessAuthorizer
 import com.agrotech.oviapp.presentation.security.RanchContextInterceptor
 import com.agrotech.oviapp.presentation.security.SecurityConfig
@@ -21,12 +23,16 @@ import org.springframework.test.web.servlet.post
 @WebMvcTest(MediaController::class)
 @Import(
     SecurityConfig::class,
+    JwtAuthenticationFilter::class,
     RanchContextInterceptor::class,
     WebMvcConfig::class,
     GlobalExceptionHandler::class,
     RanchAccessAuthorizer::class,
 )
 class MediaSecurityTest {
+
+    @MockitoBean
+    private lateinit var jwtTokenPort: JwtTokenPort
 
     @Autowired
     private lateinit var mockMvc: MockMvc

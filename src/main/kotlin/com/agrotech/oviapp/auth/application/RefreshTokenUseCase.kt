@@ -55,6 +55,11 @@ class RefreshTokenUseCase(
         val user = authUserPort.findById(stored.userId)
             ?: throw InvalidCredentialsException("INVALID_REFRESH_TOKEN", "Refresh token inválido o expirado.")
 
+        if (!user.active) {
+            refreshTokenPort.revokeAllForUser(user.id, now)
+            throw InvalidCredentialsException("INVALID_REFRESH_TOKEN", "Refresh token inválido o expirado.")
+        }
+
         refreshTokenPort.revoke(stored.id, now)
 
         val newRefreshToken = generateOpaqueToken()

@@ -12,6 +12,7 @@ data class AuthUser(
     val ranchId: UUID?,
     val associationId: UUID?,
     val permissions: Map<String, Any?>,
+    val active: Boolean = true,
 )
 
 data class RanchSummary(

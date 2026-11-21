@@ -54,8 +54,19 @@ class RanchMembershipJpaAdapterTest {
     }
 
     @Test
-    fun `unknown user is denied access`() {
+    fun `unknown or inactive user is denied access`() {
         given(usuarioRepo.findByUsuario("ghost")).willReturn(null)
         assertFalse(adapter.hasAccess("ghost", ranchA))
+
+        val inactiveOwner = UsuarioEntity(
+            id = UUID.randomUUID(),
+            ranchoId = ranchA,
+            usuario = "disabled_worker",
+            contrasenaHash = "hash",
+            rol = "WORKER_BRANCH",
+            activo = false,
+        )
+        given(usuarioRepo.findByUsuario("disabled_worker")).willReturn(inactiveOwner)
+        assertFalse(adapter.hasAccess("disabled_worker", ranchA))
     }
 }

@@ -129,6 +129,19 @@ class AuthUseCasesTest {
         assertThrows(InvalidCredentialsException::class.java) {
             useCase.execute(LoginCommand("unknown", "secret123"))
         }
+        val inactiveUser = owner.copy(id = UUID.randomUUID(), username = "disabled_user", active = false)
+        val inactiveUseCase = LoginUseCase(
+            authUserPort = FakeAuthUserPort(inactiveUser),
+            passwordHasher = FakePasswordHasherPort(),
+            ranchCatalogPort = FakeRanchCatalogPort(mapOf(ranchA.id to ranchA), emptyMap()),
+            jwtTokenPort = FakeJwtTokenPort(),
+            refreshTokenPort = refreshStore,
+            clock = clock,
+            refreshTtlSeconds = 3600,
+        )
+        assertThrows(InvalidCredentialsException::class.java) {
+            inactiveUseCase.execute(LoginCommand("disabled_user", "secret123"))
+        }
         assertTrue(refreshStore.tokensByHash.isEmpty())
     }
 
