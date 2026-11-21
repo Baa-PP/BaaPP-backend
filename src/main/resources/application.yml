@@ -18,17 +18,14 @@ server:
 app:
   cors:
     allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000}
-<<<<<<< HEAD
   s3:
     bucket: ${S3_MEDIA_BUCKET:agrotech-oviapp-media}
     region: ${AWS_REGION:us-east-2}
     put-ttl-seconds: ${S3_PUT_TTL_SECONDS:300}
     get-ttl-seconds: ${S3_GET_TTL_SECONDS:300}
     max-size-bytes: ${S3_MAX_SIZE_BYTES:10485760}
-=======
   jwt:
     secret: ${JWT_SECRET:}
     access-ttl-seconds: ${JWT_ACCESS_TTL_SECONDS:900}
     refresh-ttl-seconds: ${JWT_REFRESH_TTL_SECONDS:2592000}
->>>>>>> origin/main
 

@@ -1,5 +1,6 @@
 package com.agrotech.oviapp.media.presentation
 
+import com.agrotech.oviapp.auth.domain.JwtTokenPort
 import com.agrotech.oviapp.domain.exception.DomainValidationException
 import com.agrotech.oviapp.domain.exception.ForbiddenAccessException
 import com.agrotech.oviapp.domain.port.RanchMembershipPort
@@ -45,6 +46,9 @@ class MediaControllerTest {
 
     @MockitoBean
     private lateinit var ranchMembershipPort: RanchMembershipPort
+
+    @MockitoBean
+    private lateinit var jwtTokenPort: JwtTokenPort
 
     private val ranchId = UUID.fromString("11111111-1111-1111-1111-111111111111")
     private val otherRanchId = UUID.fromString("99999999-9999-9999-9999-999999999999")
