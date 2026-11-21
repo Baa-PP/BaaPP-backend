@@ -1,7 +1,9 @@
 package com.agrotech.oviapp.weights.presentation
 
+import com.agrotech.oviapp.auth.domain.JwtTokenPort
 import com.agrotech.oviapp.domain.port.RanchMembershipPort
 import com.agrotech.oviapp.presentation.GlobalExceptionHandler
+import com.agrotech.oviapp.presentation.security.JwtAuthenticationFilter
 import com.agrotech.oviapp.presentation.security.RanchAccessAuthorizer
 import com.agrotech.oviapp.presentation.security.RanchContextInterceptor
 import com.agrotech.oviapp.presentation.security.SecurityConfig
@@ -23,12 +25,16 @@ import java.util.UUID
 @WebMvcTest(WeightsController::class)
 @Import(
     SecurityConfig::class,
+    JwtAuthenticationFilter::class,
     RanchContextInterceptor::class,
     WebMvcConfig::class,
     GlobalExceptionHandler::class,
     RanchAccessAuthorizer::class,
 )
 class WeightsSecurityTest {
+
+    @MockitoBean
+    private lateinit var jwtTokenPort: JwtTokenPort
 
     @Autowired
     private lateinit var mockMvc: MockMvc

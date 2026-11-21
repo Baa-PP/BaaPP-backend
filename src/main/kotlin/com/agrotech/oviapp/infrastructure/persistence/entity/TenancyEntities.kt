@@ -5,9 +5,13 @@ import jakarta.persistence.Embeddable
 import jakarta.persistence.EmbeddedId
 import jakarta.persistence.Entity
 import jakarta.persistence.Id
+import jakarta.persistence.PostLoad
+import jakarta.persistence.PostPersist
 import jakarta.persistence.Table
+import jakarta.persistence.Transient
 import org.hibernate.annotations.JdbcTypeCode
 import org.hibernate.type.SqlTypes
+import org.springframework.data.domain.Persistable
 import java.io.Serializable
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -103,3 +107,40 @@ class UsuarioEntity(
     @Column(name = "creado_en", nullable = false, updatable = false)
     val creadoEn: OffsetDateTime = OffsetDateTime.now(),
 )
+
+@Entity
+@Table(name = "refresh_tokens")
+class RefreshTokenEntity(
+    @Id
+    @Column(name = "id", nullable = false, updatable = false)
+    private val id: UUID,
+
+    @Column(name = "usuario_id", nullable = false)
+    val usuarioId: UUID,
+
+    @Column(name = "token_hash", length = 64, nullable = false, unique = true)
+    val tokenHash: String,
+
+    @Column(name = "expira_en", nullable = false)
+    val expiraEn: OffsetDateTime,
+
+    @Column(name = "revocado_en")
+    var revocadoEn: OffsetDateTime? = null,
+
+    @Column(name = "creado_en", nullable = false, updatable = false)
+    val creadoEn: OffsetDateTime = OffsetDateTime.now(),
+) : Persistable<UUID> {
+
+    @Transient
+    private var isNewRecord: Boolean = true
+
+    override fun getId(): UUID = id
+
+    override fun isNew(): Boolean = isNewRecord
+
+    @PostPersist
+    @PostLoad
+    fun markNotNew() {
+        isNewRecord = false
+    }
+}

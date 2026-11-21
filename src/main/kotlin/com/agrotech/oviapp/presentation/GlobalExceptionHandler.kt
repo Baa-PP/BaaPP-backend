@@ -4,6 +4,7 @@ import com.agrotech.oviapp.domain.exception.BusinessConflictException
 import com.agrotech.oviapp.domain.exception.DomainException
 import com.agrotech.oviapp.domain.exception.DomainValidationException
 import com.agrotech.oviapp.domain.exception.ForbiddenAccessException
+import com.agrotech.oviapp.domain.exception.InvalidCredentialsException
 import com.agrotech.oviapp.domain.exception.ResourceNotFoundException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpHeaders
@@ -34,6 +35,7 @@ class GlobalExceptionHandler : ResponseEntityExceptionHandler() {
     fun handleDomainException(ex: DomainException): ResponseEntity<ApiErrorResponse> {
         val status = when (ex) {
             is DomainValidationException -> HttpStatus.BAD_REQUEST
+            is InvalidCredentialsException -> HttpStatus.UNAUTHORIZED
             is ForbiddenAccessException -> HttpStatus.FORBIDDEN
             is ResourceNotFoundException -> HttpStatus.NOT_FOUND
             is BusinessConflictException -> HttpStatus.CONFLICT

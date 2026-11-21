@@ -1,20 +1,26 @@
 package com.agrotech.oviapp
 
+import com.agrotech.oviapp.auth.domain.JwtTokenPort
 import com.agrotech.oviapp.presentation.HealthController
+import com.agrotech.oviapp.presentation.security.JwtAuthenticationFilter
 import com.agrotech.oviapp.presentation.security.SecurityConfig
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.TestPropertySource
+import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.options
 
 @WebMvcTest(HealthController::class)
-@Import(SecurityConfig::class)
+@Import(SecurityConfig::class, JwtAuthenticationFilter::class)
 @TestPropertySource(properties = ["app.cors.allowed-origins=https://main.example.amplifyapp.com,http://localhost:3000"])
 class HealthAndSecurityTest {
+
+    @MockitoBean
+    private lateinit var jwtTokenPort: JwtTokenPort
 
     @Autowired
     private lateinit var mockMvc: MockMvc
