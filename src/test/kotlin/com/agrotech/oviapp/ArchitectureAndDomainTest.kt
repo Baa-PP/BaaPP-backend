@@ -19,7 +19,7 @@ class ArchitectureAndDomainTest {
         noClasses()
             .that().resideInAPackage("..domain..")
             .should().dependOnClassesThat()
-            .resideInAnyPackage("..infrastructure..", "..presentation..", "org.springframework..")
+            .resideInAnyPackage("..infrastructure..", "..presentation..", "org.springframework..", "software.amazon..", "jakarta.persistence..")
             .check(classes)
     }
 
