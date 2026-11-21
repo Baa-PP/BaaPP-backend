@@ -30,6 +30,8 @@ dependencies {
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.dhatim:fastexcel:0.18.4")
     implementation("org.dhatim:fastexcel-reader:0.18.4")
+    implementation(platform("software.amazon.awssdk:bom:2.29.45"))
+    implementation("software.amazon.awssdk:s3")
     runtimeOnly("org.postgresql:postgresql")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
