@@ -3,6 +3,8 @@ package com.agrotech.oviapp.media.presentation
 import com.agrotech.oviapp.auth.domain.JwtTokenPort
 import com.agrotech.oviapp.domain.exception.DomainValidationException
 import com.agrotech.oviapp.domain.exception.ForbiddenAccessException
+import com.agrotech.oviapp.domain.model.RanchAccess
+import com.agrotech.oviapp.domain.model.Role
 import com.agrotech.oviapp.domain.port.RanchMembershipPort
 import com.agrotech.oviapp.media.application.GeneratePresignedDownloadCommand
 import com.agrotech.oviapp.media.application.GeneratePresignedDownloadUseCase
@@ -56,8 +58,8 @@ class MediaControllerTest {
 
     @BeforeEach
     fun setUpMembership() {
-        given(ranchMembershipPort.hasAccess("producer_1", ranchId)).willReturn(true)
-        given(ranchMembershipPort.hasAccess("producer_1", otherRanchId)).willReturn(false)
+        given(ranchMembershipPort.resolveAccess("producer_1", ranchId)).willReturn(RanchAccess(Role.OWNER))
+        given(ranchMembershipPort.resolveAccess("producer_1", otherRanchId)).willReturn(null)
     }
 
     @Test

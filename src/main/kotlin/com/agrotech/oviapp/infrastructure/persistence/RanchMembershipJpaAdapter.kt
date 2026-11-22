@@ -1,5 +1,6 @@
 package com.agrotech.oviapp.infrastructure.persistence
 
+import com.agrotech.oviapp.domain.model.RanchAccess
 import com.agrotech.oviapp.domain.model.Role
 import com.agrotech.oviapp.domain.port.RanchMembershipPort
 import com.agrotech.oviapp.infrastructure.persistence.entity.AsociacionRanchoEntity
@@ -23,19 +24,25 @@ class RanchMembershipJpaAdapter(
     private val asociacionRanchoRepository: AsociacionRanchoJpaRepository,
 ) : RanchMembershipPort {
 
-    override fun hasAccess(principalIdentifier: String, ranchId: UUID): Boolean {
-        val user = findUser(principalIdentifier) ?: return false
-        if (!user.activo) return false
-        val role = runCatching { Role.valueOf(user.rol) }.getOrNull() ?: return false
+    override fun hasAccess(principalIdentifier: String, ranchId: UUID): Boolean =
+        resolveAccess(principalIdentifier, ranchId) != null
 
-        return when (role) {
+    override fun resolveAccess(principalIdentifier: String, ranchId: UUID): RanchAccess? {
+        if (principalIdentifier.isBlank()) return null
+        val user = findUser(principalIdentifier) ?: return null
+        if (!user.activo) return null
+        val role = runCatching { Role.valueOf(user.rol) }.getOrNull() ?: return null
+
+        val allowed = when (role) {
             Role.OWNER, Role.WORKER_BRANCH -> user.ranchoId == ranchId
             Role.VET_TECHNICIAN, Role.ASSOCIATION_SUPERUSER -> {
-                user.ranchoId == ranchId ||
-                    (user.asociacionId != null &&
-                        asociacionRanchoRepository.existsByIdAsociacionIdAndIdRanchoId(user.asociacionId!!, ranchId))
+                val asociacionId = user.asociacionId
+                asociacionId != null &&
+                    asociacionRanchoRepository.existsByIdAsociacionIdAndIdRanchoId(asociacionId, ranchId)
             }
         }
+
+        return if (allowed) RanchAccess(role = role, permissions = user.permisos.toMap()) else null
     }
 
     private fun findUser(principalIdentifier: String): UsuarioEntity? =

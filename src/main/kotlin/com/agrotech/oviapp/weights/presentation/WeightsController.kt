@@ -3,7 +3,9 @@ package com.agrotech.oviapp.weights.presentation
 import com.agrotech.oviapp.domain.exception.DomainValidationException
 import com.agrotech.oviapp.domain.model.AnimalStatus
 import com.agrotech.oviapp.domain.model.LifeStage
+import com.agrotech.oviapp.domain.model.RanchPermission
 import com.agrotech.oviapp.presentation.security.RanchAccessAuthorizer
+import com.agrotech.oviapp.presentation.security.RequireRanchPermission
 import com.agrotech.oviapp.weights.application.AnimalWeightHistoryResult
 import com.agrotech.oviapp.weights.application.ConfirmWeaningCommand
 import com.agrotech.oviapp.weights.application.ConfirmWeaningUseCase
@@ -121,6 +123,7 @@ class WeightsController(
 ) {
 
     @PostMapping("/weights")
+    @RequireRanchPermission(RanchPermission.CAPTURA)
     fun registerWeight(
         authentication: Authentication?,
         @Valid @RequestBody request: RegisterWeightRequest,
@@ -141,6 +144,7 @@ class WeightsController(
     }
 
     @GetMapping("/animals/{id}/weights")
+    @RequireRanchPermission(RanchPermission.LECTURA)
     fun getAnimalWeights(
         authentication: Authentication?,
         @PathVariable("id") animalId: UUID,
@@ -150,6 +154,7 @@ class WeightsController(
     }
 
     @PostMapping("/animals/{id}/wean")
+    @RequireRanchPermission(RanchPermission.CAPTURA)
     fun confirmWeaning(
         authentication: Authentication?,
         @PathVariable("id") animalId: UUID,
