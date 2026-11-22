@@ -127,14 +127,17 @@ class GlobalExceptionHandler : ResponseEntityExceptionHandler() {
         status: HttpStatusCode,
         request: WebRequest,
     ): ResponseEntity<Any>? {
+        if (ex.isForReturnValue) {
+            return handleExceptionInternal(
+                ex,
+                ApiErrorResponse(code = CODE_INTERNAL_ERROR, message = MSG_INTERNAL_ERROR),
+                headers,
+                status,
+                request,
+            )
+        }
         val details = ex.parameterValidationResults
-            .flatMap { result ->
-                val paramName = resolveParameterName(result)
-                result.resolvableErrors.map { error ->
-                    val reason = spanishConstraintReason(error.codes?.lastOrNull())
-                    if (paramName != null) "$paramName: $reason" else reason
-                }
-            }
+            .flatMap { result -> formatParameterValidationResult(result) }
             .distinct()
             .sorted()
         return handleExceptionInternal(
@@ -294,6 +297,19 @@ class GlobalExceptionHandler : ResponseEntityExceptionHandler() {
         violation.messageTemplate
             ?.takeIf { it.isNotBlank() && !it.startsWith("{") }
             ?.let { violation.message?.trim()?.takeIf { msg -> msg.isNotBlank() } }
+
+    private fun formatParameterValidationResult(result: ParameterValidationResult): List<String> {
+        val paramName = resolveParameterName(result)
+        return result.resolvableErrors.map { error ->
+            when (error) {
+                is FieldError -> formatFieldError(error)
+                else -> {
+                    val reason = spanishConstraintReason(error.codes?.lastOrNull())
+                    if (paramName != null) "$paramName: $reason" else reason
+                }
+            }
+        }
+    }
 
     private fun resolveParameterName(result: ParameterValidationResult): String? {
         val methodParam = result.methodParameter

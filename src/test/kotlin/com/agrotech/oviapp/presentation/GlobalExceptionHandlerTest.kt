@@ -143,6 +143,18 @@ class GlobalExceptionHandlerTest {
         fun methodValidation(@RequestParam("limit") @Min(1) limit: Int): Map<String, Int> =
             mapOf("limit" to limit)
 
+        @PostMapping("/validate-combined")
+        fun validateCombined(
+            @RequestParam("limit") @Min(1) limit: Int,
+            @Valid @RequestBody payload: ProbePayload,
+        ): Map<String, Any> =
+            mapOf("limit" to limit, "folio" to payload.folio.orEmpty())
+
+        @GetMapping("/invalid-return-value")
+        @Valid
+        fun invalidReturnValue(): ProbePayload =
+            ProbePayload(folio = "", weightKg = BigDecimal("-1.0"))
+
         @GetMapping("/type-mismatch/{id}")
         fun typeMismatch(@PathVariable("id") id: UUID): Map<String, String> =
             mapOf("id" to id.toString())
@@ -290,6 +302,48 @@ class GlobalExceptionHandlerTest {
             methodValResult,
             "must be greater than",
             "Validation failure",
+            "HandlerMethodValidationException",
+        )
+    }
+
+    @Test
+    fun `preserves nested body field names alongside scalar params in combined method validation`() {
+        val result = mockMvc.post("/probe/validate-combined") {
+            param("limit", "0")
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"folio": "   ", "weightKg": -2.5}"""
+        }.andExpect {
+            status { isBadRequest() }
+        }.andReturn()
+
+        val error = assertUniformError(result, expectedCode = "VALIDATION_ERROR")
+        assertTrue(error.message.contains("limit"), "Expected scalar param 'limit' in: ${error.message}")
+        assertTrue(error.message.contains("folio"), "Expected nested body field 'folio' in: ${error.message}")
+        assertTrue(error.message.contains("weightKg"), "Expected nested body field 'weightKg' in: ${error.message}")
+        assertFalse(error.message.contains("payload"), "Must not expose wrapper parameter name 'payload' in: ${error.message}")
+        assertNoInternalLeaks(
+            result,
+            "must not be blank",
+            "must be greater than",
+            "ProbePayload",
+            "HandlerMethodValidationException",
+        )
+    }
+
+    @Test
+    fun `preserves 500 INTERNAL_ERROR when handler method return-value validation fails`() {
+        val result = mockMvc.get("/probe/invalid-return-value")
+            .andExpect { status { isInternalServerError() } }
+            .andReturn()
+
+        assertUniformError(result, expectedCode = "INTERNAL_ERROR")
+        assertNoInternalLeaks(
+            result,
+            "folio",
+            "weightKg",
+            "ProbePayload",
+            "must not be blank",
+            "must be greater than",
             "HandlerMethodValidationException",
         )
     }
