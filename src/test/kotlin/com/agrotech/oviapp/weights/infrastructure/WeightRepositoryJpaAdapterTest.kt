@@ -7,15 +7,18 @@ import com.agrotech.oviapp.weights.domain.WeightMilestone
 import org.hibernate.exception.ConstraintViolationException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
 import org.mockito.BDDMockito.given
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.mockingDetails
 import org.mockito.Mockito.verify
 import org.springframework.dao.DataIntegrityViolationException
 import java.math.BigDecimal
 import java.sql.SQLException
 import java.time.LocalDate
+import java.time.OffsetDateTime
 import java.util.UUID
 
 class WeightRepositoryJpaAdapterTest {
@@ -58,6 +61,22 @@ class WeightRepositoryJpaAdapterTest {
         assertThrows(DataIntegrityViolationException::class.java) {
             adapter.create(measurement)
         }
+    }
+
+    @Test
+    fun `touchUpdatedAt delegates atomic ranch-scoped timestamp update to repository`() {
+        val animalRepo = mock(AnimalWeightingJpaRepository::class.java)
+        val animalAdapter = AnimalWeightingJpaAdapter(animalRepo)
+        val animalId = UUID.randomUUID()
+        val ranchId = UUID.randomUUID()
+
+        animalAdapter.touchUpdatedAt(animalId, ranchId)
+
+        val invocation = mockingDetails(animalRepo).invocations.single()
+        assertEquals("touchUpdatedAt", invocation.method.name)
+        assertEquals(animalId, invocation.arguments[0])
+        assertEquals(ranchId, invocation.arguments[1])
+        assertTrue(invocation.arguments[2] is OffsetDateTime)
     }
 
     private fun sampleMeasurement() = WeightMeasurement(
