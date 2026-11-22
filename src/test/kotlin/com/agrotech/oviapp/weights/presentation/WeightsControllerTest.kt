@@ -4,6 +4,8 @@ import com.agrotech.oviapp.auth.domain.JwtTokenPort
 import com.agrotech.oviapp.domain.exception.DomainValidationException
 import com.agrotech.oviapp.domain.model.AnimalStatus
 import com.agrotech.oviapp.domain.model.LifeStage
+import com.agrotech.oviapp.domain.model.RanchAccess
+import com.agrotech.oviapp.domain.model.Role
 import com.agrotech.oviapp.domain.port.RanchMembershipPort
 import com.agrotech.oviapp.presentation.GlobalExceptionHandler
 import com.agrotech.oviapp.presentation.security.RanchAccessAuthorizer
@@ -69,8 +71,8 @@ class WeightsControllerTest {
 
     @BeforeEach
     fun setUpMembership() {
-        given(ranchMembershipPort.hasAccess("producer_1", ranchId)).willReturn(true)
-        given(ranchMembershipPort.hasAccess("producer_1", otherRanchId)).willReturn(false)
+        given(ranchMembershipPort.resolveAccess("producer_1", ranchId)).willReturn(RanchAccess(Role.OWNER))
+        given(ranchMembershipPort.resolveAccess("producer_1", otherRanchId)).willReturn(null)
     }
 
     @Test
