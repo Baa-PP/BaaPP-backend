@@ -18,9 +18,11 @@ import com.agrotech.oviapp.domain.model.AnimalStatus
 import com.agrotech.oviapp.domain.model.ConceptionMethod
 import com.agrotech.oviapp.domain.model.LifeStage
 import com.agrotech.oviapp.domain.model.ParturitionType
+import com.agrotech.oviapp.domain.model.RanchPermission
 import com.agrotech.oviapp.domain.model.ReproductiveStatus
 import com.agrotech.oviapp.domain.model.Sex
 import com.agrotech.oviapp.presentation.security.RanchAccessAuthorizer
+import com.agrotech.oviapp.presentation.security.RequireRanchPermission
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
@@ -286,6 +288,7 @@ class AnimalsController(
 ) {
 
     @GetMapping
+    @RequireRanchPermission(RanchPermission.LECTURA)
     fun listAnimals(
         authentication: Authentication?,
         @RequestParam(name = "q", required = false) search: String?,
@@ -318,6 +321,7 @@ class AnimalsController(
     }
 
     @GetMapping("/{id}")
+    @RequireRanchPermission(RanchPermission.LECTURA)
     fun getAnimalDetail(
         authentication: Authentication?,
         @PathVariable("id") animalId: UUID,
@@ -327,6 +331,7 @@ class AnimalsController(
     }
 
     @PostMapping
+    @RequireRanchPermission(RanchPermission.CAPTURA)
     fun createAnimal(
         authentication: Authentication?,
         @Valid @RequestBody request: CreateAnimalRequest,
@@ -366,6 +371,7 @@ class AnimalsController(
     }
 
     @PutMapping("/{id}")
+    @RequireRanchPermission(RanchPermission.EDICION)
     fun updateAnimal(
         authentication: Authentication?,
         @PathVariable("id") animalId: UUID,

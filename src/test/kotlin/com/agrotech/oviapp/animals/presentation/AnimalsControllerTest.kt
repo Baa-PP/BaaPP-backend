@@ -21,7 +21,9 @@ import com.agrotech.oviapp.domain.model.AnimalStatus
 import com.agrotech.oviapp.domain.model.ConceptionMethod
 import com.agrotech.oviapp.domain.model.LifeStage
 import com.agrotech.oviapp.domain.model.ParturitionType
+import com.agrotech.oviapp.domain.model.RanchAccess
 import com.agrotech.oviapp.domain.model.ReproductiveStatus
+import com.agrotech.oviapp.domain.model.Role
 import com.agrotech.oviapp.domain.model.Sex
 import com.agrotech.oviapp.domain.port.RanchMembershipPort
 import com.agrotech.oviapp.presentation.GlobalExceptionHandler
@@ -82,8 +84,53 @@ class AnimalsControllerTest {
 
     @BeforeEach
     fun setUpMembership() {
-        given(ranchMembershipPort.hasAccess("producer_1", ranchId)).willReturn(true)
-        given(ranchMembershipPort.hasAccess("producer_1", otherRanchId)).willReturn(false)
+        given(ranchMembershipPort.resolveAccess("producer_1", ranchId)).willReturn(RanchAccess(Role.OWNER))
+        given(ranchMembershipPort.resolveAccess("producer_1", otherRanchId)).willReturn(null)
+    }
+
+    @Test
+    fun `WORKER_BRANCH without lectura, captura, or edicion permission receives 403 before invoking use cases`() {
+        val noPermWorker = TestingAuthenticationToken("worker_none", null, "ROLE_WORKER_BRANCH")
+        given(ranchMembershipPort.resolveAccess("worker_none", ranchId))
+            .willReturn(RanchAccess(Role.WORKER_BRANCH, emptyMap()))
+
+        mockMvc.get("/api/v1/animals") {
+            principal = noPermWorker
+            header("X-Active-Ranch-Id", ranchId.toString())
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("INSUFFICIENT_PERMISSION") }
+        }
+
+        mockMvc.get("/api/v1/animals/$animalId") {
+            principal = noPermWorker
+            header("X-Active-Ranch-Id", ranchId.toString())
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("INSUFFICIENT_PERMISSION") }
+        }
+
+        mockMvc.post("/api/v1/animals") {
+            principal = noPermWorker
+            header("X-Active-Ranch-Id", ranchId.toString())
+            contentType = MediaType.APPLICATION_JSON
+            content = validCreateJson()
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("INSUFFICIENT_PERMISSION") }
+        }
+
+        mockMvc.put("/api/v1/animals/$animalId") {
+            principal = noPermWorker
+            header("X-Active-Ranch-Id", ranchId.toString())
+            contentType = MediaType.APPLICATION_JSON
+            content = validUpdateJson()
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("INSUFFICIENT_PERMISSION") }
+        }
+
+        verifyNoInteractions(listAnimalsUseCase, getAnimalDetailUseCase, createAnimalUseCase, updateAnimalUseCase)
     }
 
     @Test

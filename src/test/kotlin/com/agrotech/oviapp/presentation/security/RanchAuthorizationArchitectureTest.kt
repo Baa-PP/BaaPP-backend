@@ -1,5 +1,6 @@
 package com.agrotech.oviapp.presentation.security
 
+import com.agrotech.oviapp.animals.presentation.AnimalsController
 import com.agrotech.oviapp.domain.model.RanchAccess
 import com.agrotech.oviapp.domain.model.RanchPermission
 import com.agrotech.oviapp.domain.port.RanchMembershipPort
@@ -86,8 +87,9 @@ class RanchAuthorizationArchitectureTest {
     }
 
     @Test
-    fun `ranch-scoped endpoints in WeightsController and MediaController declare RequireRanchPermission`() {
+    fun `ranch-scoped endpoints in AnimalsController, WeightsController, and MediaController declare RequireRanchPermission`() {
         val targetControllers = setOf(
+            AnimalsController::class.java.name,
             WeightsController::class.java.name,
             MediaController::class.java.name,
         )
