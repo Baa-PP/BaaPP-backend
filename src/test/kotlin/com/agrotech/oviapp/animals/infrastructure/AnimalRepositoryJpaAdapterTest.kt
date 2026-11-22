@@ -298,6 +298,21 @@ class AnimalRepositoryJpaAdapterTest {
         assertEquals(BigDecimal("20.50"), weights.first().weightKg)
     }
 
+    @Test
+    fun `hasDependentRecordsAsSire and hasDependentRecordsAsDam delegate to ranch-scoped repository checks`() {
+        val ranchId = UUID.randomUUID()
+        val sireId = UUID.randomUUID()
+        val damId = UUID.randomUUID()
+
+        given(repository.hasDependentRecordsAsSire(ranchId, sireId)).willReturn(true)
+        given(repository.hasDependentRecordsAsDam(ranchId, damId)).willReturn(false)
+
+        assertEquals(true, adapter.hasDependentRecordsAsSire(ranchId, sireId))
+        assertEquals(false, adapter.hasDependentRecordsAsDam(ranchId, damId))
+        verify(repository).hasDependentRecordsAsSire(ranchId, sireId)
+        verify(repository).hasDependentRecordsAsDam(ranchId, damId)
+    }
+
     private fun sampleRecord() = AnimalRecord(
         id = UUID.randomUUID(),
         ranchId = UUID.randomUUID(),

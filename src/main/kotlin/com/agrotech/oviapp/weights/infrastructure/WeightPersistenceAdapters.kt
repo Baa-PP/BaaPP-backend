@@ -20,12 +20,14 @@ import org.hibernate.exception.ConstraintViolationException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import java.util.UUID
 
 interface AnimalWeightingJpaRepository : JpaRepository<AnimalEntity, UUID> {
@@ -37,6 +39,14 @@ interface AnimalWeightingJpaRepository : JpaRepository<AnimalEntity, UUID> {
         @Param("id") id: UUID,
         @Param("ranchoId") ranchoId: UUID,
     ): AnimalEntity?
+
+    @Modifying
+    @Query("UPDATE AnimalEntity a SET a.actualizadoEn = :updatedAt WHERE a.id = :id AND a.ranchoId = :ranchoId")
+    fun touchUpdatedAt(
+        @Param("id") id: UUID,
+        @Param("ranchoId") ranchoId: UUID,
+        @Param("updatedAt") updatedAt: OffsetDateTime,
+    ): Int
 }
 
 interface PesajeGananciaViewRow {
@@ -112,6 +122,10 @@ class AnimalWeightingJpaAdapter(
             animal.toEntity()
         }
         return repository.save(entity).toDomain()
+    }
+
+    override fun touchUpdatedAt(animalId: UUID, ranchId: UUID) {
+        repository.touchUpdatedAt(animalId, ranchId, OffsetDateTime.now(ZoneOffset.UTC))
     }
 
     private fun AnimalEntity.toDomain() = Animal(

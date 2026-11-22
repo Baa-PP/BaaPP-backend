@@ -90,6 +90,23 @@ class UpdateAnimalUseCase(
         AnimalPolicy.validatePedigree(existing.id, command.sireId, command.damId)
         val photoS3Key = AnimalPolicy.validatePhotoS3Key(command.photoS3Key, command.ranchId)
 
+        if (command.sex != existing.sex) {
+            when (existing.sex) {
+                Sex.MALE -> if (animalRepository.hasDependentRecordsAsSire(command.ranchId, existing.id)) {
+                    throw BusinessConflictException(
+                        code = "SEX_CHANGE_CONFLICT",
+                        message = "No se puede cambiar el sexo del ejemplar porque está registrado como padre en el rancho.",
+                    )
+                }
+                Sex.FEMALE -> if (animalRepository.hasDependentRecordsAsDam(command.ranchId, existing.id)) {
+                    throw BusinessConflictException(
+                        code = "SEX_CHANGE_CONFLICT",
+                        message = "No se puede cambiar el sexo del ejemplar porque está registrado como madre en el rancho.",
+                    )
+                }
+            }
+        }
+
         validateParentsInRanch(animalRepository, command.ranchId, command.sireId, command.damId)
 
         if (animalRepository.existsByRanchIdAndFolioInternoAndIdNot(command.ranchId, text.folioInterno, existing.id)) {

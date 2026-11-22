@@ -415,6 +415,122 @@ class AnimalUseCasesTest {
         )
     }
 
+    @Test
+    fun `updateAnimal blocks incompatible sex changes when dependent parent records exist and skips check when sex is unchanged`() {
+        val repo = InMemoryAnimalRepository()
+        val ram = sampleRecord(
+            id = sireId,
+            ranchId = ranchA,
+            folioInterno = "RAM-10",
+            sex = Sex.MALE,
+            lifeStage = LifeStage.ADULT,
+            reproductiveStatus = ReproductiveStatus.STUD_RAM,
+        )
+        val ewe = sampleRecord(
+            id = damId,
+            ranchId = ranchA,
+            folioInterno = "EWE-10",
+            sex = Sex.FEMALE,
+            lifeStage = LifeStage.ADULT,
+            reproductiveStatus = ReproductiveStatus.EMPTY,
+        )
+        val unreferencedMale = sampleRecord(
+            id = UUID.randomUUID(),
+            ranchId = ranchA,
+            folioInterno = "LAMB-10",
+            sex = Sex.MALE,
+            lifeStage = LifeStage.LAMB_LACTATING,
+            reproductiveStatus = ReproductiveStatus.EMPTY,
+        )
+        repo.seed(ram)
+        repo.seed(ewe)
+        repo.seed(unreferencedMale)
+        repo.sireReferences += ranchA to ram.id
+        repo.damReferences += ranchA to ewe.id
+
+        val useCase = UpdateAnimalUseCase(repo)
+
+        // Updating without changing sex skips dependent parent lookups
+        useCase.execute(
+            UpdateAnimalCommand(
+                animalId = ram.id,
+                ranchId = ranchA,
+                folioInterno = "RAM-10",
+                breed = ram.breed,
+                color = "Negro",
+                sex = Sex.MALE,
+                birthDate = ram.birthDate,
+                lifeStage = LifeStage.ADULT,
+                reproductiveStatus = ReproductiveStatus.STUD_RAM,
+                status = AnimalStatus.ACTIVE,
+            ),
+        )
+        assertEquals(0, repo.sireCheckCalls)
+        assertEquals(0, repo.damCheckCalls)
+
+        // MALE -> FEMALE blocked when referenced as sire
+        assertEquals(
+            "SEX_CHANGE_CONFLICT",
+            assertThrows(BusinessConflictException::class.java) {
+                useCase.execute(
+                    UpdateAnimalCommand(
+                        animalId = ram.id,
+                        ranchId = ranchA,
+                        folioInterno = "RAM-10",
+                        breed = ram.breed,
+                        color = ram.color,
+                        sex = Sex.FEMALE,
+                        birthDate = ram.birthDate,
+                        lifeStage = LifeStage.ADULT,
+                        reproductiveStatus = ReproductiveStatus.EMPTY,
+                        status = AnimalStatus.ACTIVE,
+                    ),
+                )
+            }.code,
+        )
+        assertEquals(1, repo.sireCheckCalls)
+
+        // FEMALE -> MALE blocked when referenced as dam
+        assertEquals(
+            "SEX_CHANGE_CONFLICT",
+            assertThrows(BusinessConflictException::class.java) {
+                useCase.execute(
+                    UpdateAnimalCommand(
+                        animalId = ewe.id,
+                        ranchId = ranchA,
+                        folioInterno = "EWE-10",
+                        breed = ewe.breed,
+                        color = ewe.color,
+                        sex = Sex.MALE,
+                        birthDate = ewe.birthDate,
+                        lifeStage = LifeStage.ADULT,
+                        reproductiveStatus = ReproductiveStatus.EMPTY,
+                        status = AnimalStatus.ACTIVE,
+                    ),
+                )
+            }.code,
+        )
+        assertEquals(1, repo.damCheckCalls)
+
+        // Sex change succeeds when no dependent parent references exist
+        val updatedUnreferenced = useCase.execute(
+            UpdateAnimalCommand(
+                animalId = unreferencedMale.id,
+                ranchId = ranchA,
+                folioInterno = "LAMB-10",
+                breed = unreferencedMale.breed,
+                color = unreferencedMale.color,
+                sex = Sex.FEMALE,
+                birthDate = unreferencedMale.birthDate,
+                lifeStage = LifeStage.LAMB_LACTATING,
+                reproductiveStatus = ReproductiveStatus.EMPTY,
+                status = AnimalStatus.ACTIVE,
+            ),
+        )
+        assertEquals(Sex.FEMALE, updatedUnreferenced.sex)
+        assertEquals(2, repo.sireCheckCalls)
+    }
+
     private fun baseCreateCommand(
         id: UUID? = null,
         folioInterno: String = "OV-900",
@@ -583,6 +699,10 @@ class AnimalUseCasesTest {
         val records = linkedMapOf<UUID, AnimalRecord>()
         val summaries = mutableListOf<AnimalSummary>()
         val details = mutableMapOf<Pair<UUID, UUID>, AnimalDetail>()
+        val sireReferences = mutableSetOf<Pair<UUID, UUID>>()
+        val damReferences = mutableSetOf<Pair<UUID, UUID>>()
+        var sireCheckCalls = 0
+        var damCheckCalls = 0
 
         fun seed(record: AnimalRecord) {
             records[record.id] = record
@@ -655,6 +775,16 @@ class AnimalUseCasesTest {
         override fun update(animal: AnimalRecord): AnimalRecord {
             records[animal.id] = animal
             return animal
+        }
+
+        override fun hasDependentRecordsAsSire(ranchId: UUID, animalId: UUID): Boolean {
+            sireCheckCalls++
+            return (ranchId to animalId) in sireReferences
+        }
+
+        override fun hasDependentRecordsAsDam(ranchId: UUID, animalId: UUID): Boolean {
+            damCheckCalls++
+            return (ranchId to animalId) in damReferences
         }
     }
 }

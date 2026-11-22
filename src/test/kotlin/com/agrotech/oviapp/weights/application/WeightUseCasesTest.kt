@@ -50,6 +50,7 @@ class WeightUseCasesTest {
             )
         }
         assertTrue(weightPort.saved.isEmpty())
+        assertTrue(animalPort.touchedIds.isEmpty())
     }
 
     @Test
@@ -81,10 +82,11 @@ class WeightUseCasesTest {
             )
         }
         assertEquals(existingMeasurement, weightPort.savedById[existingId])
+        assertTrue(animalPort.touchedIds.isEmpty())
     }
 
     @Test
-    fun `RegisterWeightUseCase saves measurement for MALE with scrotal circumference`() {
+    fun `RegisterWeightUseCase saves measurement for MALE with scrotal circumference and touches animal updatedAt`() {
         val maleLamb = sampleAnimal(sex = Sex.MALE, stage = LifeStage.LAMB_FATTENING, repro = ReproductiveStatus.EMPTY)
         val animalPort = FakeAnimalWeightingPort(maleLamb)
         val weightPort = FakeWeightRepositoryPort()
@@ -105,6 +107,7 @@ class WeightUseCasesTest {
         assertEquals(WeightMilestone.DAY_150, result.milestone)
         assertEquals(BigDecimal("26.50"), result.scrotalCircumferenceCm)
         assertEquals(1, weightPort.saved.size)
+        assertEquals(listOf(maleLamb.id to ranchId), animalPort.touchedIds)
     }
 
     @Test
@@ -313,6 +316,7 @@ class WeightUseCasesTest {
             )
         }
         assertTrue(weightPort.saved.isEmpty())
+        assertTrue(animalPort.touchedIds.isEmpty())
     }
 
     @Test
@@ -436,6 +440,7 @@ class WeightUseCasesTest {
     private class FakeAnimalWeightingPort(vararg initial: Animal) : AnimalWeightingPort {
         private val store = initial.associateBy { it.id }.toMutableMap()
         val lockedIds = mutableSetOf<UUID>()
+        val touchedIds = mutableListOf<Pair<UUID, UUID>>()
 
         override fun findByIdAndRanchId(animalId: UUID, ranchId: UUID): Animal? =
             store[animalId]?.takeIf { it.ranchId == ranchId }
@@ -448,6 +453,10 @@ class WeightUseCasesTest {
         override fun save(animal: Animal): Animal {
             store[animal.id] = animal
             return animal
+        }
+
+        override fun touchUpdatedAt(animalId: UUID, ranchId: UUID) {
+            touchedIds += animalId to ranchId
         }
     }
 

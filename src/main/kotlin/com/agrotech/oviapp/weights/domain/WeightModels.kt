@@ -119,6 +119,7 @@ interface AnimalWeightingPort {
     fun findByIdAndRanchId(animalId: UUID, ranchId: UUID): Animal?
     fun findByIdAndRanchIdForUpdate(animalId: UUID, ranchId: UUID): Animal?
     fun save(animal: Animal): Animal
+    fun touchUpdatedAt(animalId: UUID, ranchId: UUID)
 }
 
 interface WeightRepositoryPort {

@@ -61,6 +61,9 @@ class RegisterWeightUseCase(
             scrotalCircumferenceCm = command.scrotalCircumferenceCm,
             date = command.date,
         )
-        return weightPort.create(measurement)
+        val created = weightPort.create(measurement)
+        // Refresh animales.actualizado_en so updated_after incremental pulls include animals with new latestWeightKg/latestWeightDate.
+        animalPort.touchUpdatedAt(animal.id, command.ranchId)
+        return created
     }
 }

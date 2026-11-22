@@ -97,6 +97,40 @@ interface AnimalInventoryJpaRepository : JpaRepository<AnimalEntity, UUID> {
 
     @Query(
         value = """
+            SELECT EXISTS (
+                SELECT 1 FROM animales WHERE rancho_id = :ranchId AND padre_id = :animalId
+                UNION ALL
+                SELECT 1 FROM partos WHERE rancho_id = :ranchId AND padre_id = :animalId
+                UNION ALL
+                SELECT 1 FROM empadres WHERE rancho_id = :ranchId AND semental_id = :animalId
+            )
+        """,
+        nativeQuery = true,
+    )
+    fun hasDependentRecordsAsSire(
+        @Param("ranchId") ranchId: UUID,
+        @Param("animalId") animalId: UUID,
+    ): Boolean
+
+    @Query(
+        value = """
+            SELECT EXISTS (
+                SELECT 1 FROM animales WHERE rancho_id = :ranchId AND madre_id = :animalId
+                UNION ALL
+                SELECT 1 FROM partos WHERE rancho_id = :ranchId AND madre_id = :animalId
+                UNION ALL
+                SELECT 1 FROM empadres WHERE rancho_id = :ranchId AND hembra_id = :animalId
+            )
+        """,
+        nativeQuery = true,
+    )
+    fun hasDependentRecordsAsDam(
+        @Param("ranchId") ranchId: UUID,
+        @Param("animalId") animalId: UUID,
+    ): Boolean
+
+    @Query(
+        value = """
             SELECT v.animal_id           AS animalId,
                    v.rancho_id           AS ranchId,
                    v.folio_interno       AS folioInterno,
@@ -278,6 +312,12 @@ class AnimalRepositoryJpaAdapter(
         siniigaChip: String,
         excludeAnimalId: UUID,
     ): Boolean = repository.existsByRanchoIdAndChipSiniigaAndIdNot(ranchId, siniigaChip, excludeAnimalId)
+
+    override fun hasDependentRecordsAsSire(ranchId: UUID, animalId: UUID): Boolean =
+        repository.hasDependentRecordsAsSire(ranchId, animalId)
+
+    override fun hasDependentRecordsAsDam(ranchId: UUID, animalId: UUID): Boolean =
+        repository.hasDependentRecordsAsDam(ranchId, animalId)
 
     override fun create(animal: AnimalRecord): AnimalRecord {
         if (repository.existsById(animal.id)) {

@@ -423,6 +423,8 @@ interface AnimalRepositoryPort {
     fun existsByRanchIdAndFolioInternoAndIdNot(ranchId: UUID, folioInterno: String, excludeAnimalId: UUID): Boolean
     fun existsByRanchIdAndSiniigaChip(ranchId: UUID, siniigaChip: String): Boolean
     fun existsByRanchIdAndSiniigaChipAndIdNot(ranchId: UUID, siniigaChip: String, excludeAnimalId: UUID): Boolean
+    fun hasDependentRecordsAsSire(ranchId: UUID, animalId: UUID): Boolean
+    fun hasDependentRecordsAsDam(ranchId: UUID, animalId: UUID): Boolean
     fun create(animal: AnimalRecord): AnimalRecord
     fun update(animal: AnimalRecord): AnimalRecord
 }
