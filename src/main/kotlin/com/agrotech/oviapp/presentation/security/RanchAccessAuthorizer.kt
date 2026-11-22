@@ -1,7 +1,6 @@
 package com.agrotech.oviapp.presentation.security
 
-import com.agrotech.oviapp.domain.exception.DomainValidationException
-import com.agrotech.oviapp.domain.exception.ForbiddenAccessException
+import com.agrotech.oviapp.domain.model.RanchPermission
 import com.agrotech.oviapp.domain.port.RanchMembershipPort
 import org.springframework.security.core.Authentication
 import org.springframework.stereotype.Component
@@ -11,22 +10,28 @@ import java.util.UUID
 class RanchAccessAuthorizer(
     private val ranchMembershipPort: RanchMembershipPort,
 ) {
-    fun requireAuthorizedRanchId(authentication: Authentication?): UUID {
+    fun requireAuthorizedRanchId(
+        authentication: Authentication?,
+        requiredPermission: RanchPermission? = null,
+    ): UUID {
         val rawRanchId = RanchContextInterceptor.currentRanchId()
-            ?: throw DomainValidationException("MISSING_RANCH_CONTEXT", "Encabezado X-Active-Ranch-Id requerido.")
+            ?: throw RanchContextInterceptor.missingRanchContextException()
 
-        val ranchId = runCatching { UUID.fromString(rawRanchId) }.getOrElse {
-            throw DomainValidationException("INVALID_RANCH_CONTEXT", "Encabezado X-Active-Ranch-Id inválido.")
+        val ranchId = RanchContextInterceptor.parseRanchId(rawRanchId)
+
+        val principalName = RanchContextInterceptor.extractAuthenticatedPrincipal(authentication)
+            ?: throw RanchContextInterceptor.ranchAccessDeniedException()
+
+        val verified = RanchContextInterceptor.currentVerifiedContext()
+        val access = if (verified != null && verified.principalIdentifier == principalName && verified.ranchId == ranchId) {
+            verified.access
+        } else {
+            ranchMembershipPort.resolveAccess(principalName, ranchId)
+                ?: throw RanchContextInterceptor.ranchAccessDeniedException()
         }
 
-        val principalName = authentication
-            ?.takeIf { it.isAuthenticated }
-            ?.name
-            ?.takeIf { it.isNotBlank() }
-            ?: throw ForbiddenAccessException("RANCH_ACCESS_DENIED", "El usuario autenticado no tiene acceso al rancho activo.")
-
-        if (!ranchMembershipPort.hasAccess(principalName, ranchId)) {
-            throw ForbiddenAccessException("RANCH_ACCESS_DENIED", "El usuario autenticado no tiene acceso al rancho activo.")
+        if (requiredPermission != null && !access.hasPermission(requiredPermission)) {
+            throw RanchContextInterceptor.insufficientPermissionException(requiredPermission)
         }
 
         return ranchId

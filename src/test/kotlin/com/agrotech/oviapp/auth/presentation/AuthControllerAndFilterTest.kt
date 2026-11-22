@@ -10,6 +10,7 @@ import com.agrotech.oviapp.auth.domain.JwtTokenPort
 import com.agrotech.oviapp.auth.domain.RanchSummary
 import com.agrotech.oviapp.auth.infrastructure.HmacJwtTokenAdapter
 import com.agrotech.oviapp.domain.exception.InvalidCredentialsException
+import com.agrotech.oviapp.domain.model.RanchAccess
 import com.agrotech.oviapp.domain.model.Role
 import com.agrotech.oviapp.domain.port.RanchMembershipPort
 import com.agrotech.oviapp.presentation.GlobalExceptionHandler
@@ -172,7 +173,7 @@ class AuthControllerAndFilterTest {
             permissions = emptyMap(),
         )
         val validJwt = jwtTokenPort.issueAccessToken(user)
-        given(ranchMembershipPort.hasAccess("owner1", ranchId)).willReturn(true)
+        given(ranchMembershipPort.resolveAccess("owner1", ranchId)).willReturn(RanchAccess(Role.OWNER))
         given(getAnimalWeightsUseCase.execute(ranchId, animalId)).willReturn(
             AnimalWeightHistoryResult(
                 animalId = animalId,

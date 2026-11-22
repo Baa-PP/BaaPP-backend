@@ -1,6 +1,7 @@
 package com.agrotech.oviapp.media.presentation
 
 import com.agrotech.oviapp.domain.exception.DomainValidationException
+import com.agrotech.oviapp.domain.model.RanchPermission
 import com.agrotech.oviapp.media.application.GeneratePresignedDownloadCommand
 import com.agrotech.oviapp.media.application.GeneratePresignedDownloadUseCase
 import com.agrotech.oviapp.media.application.GeneratePresignedUploadCommand
@@ -8,6 +9,7 @@ import com.agrotech.oviapp.media.application.GeneratePresignedUploadUseCase
 import com.agrotech.oviapp.media.domain.PresignedDownloadResult
 import com.agrotech.oviapp.media.domain.PresignedUploadResult
 import com.agrotech.oviapp.presentation.security.RanchAccessAuthorizer
+import com.agrotech.oviapp.presentation.security.RequireRanchPermission
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
@@ -50,6 +52,7 @@ class MediaController(
 ) {
 
     @PostMapping("/presigned-upload")
+    @RequireRanchPermission(RanchPermission.CAPTURA)
     fun generatePresignedUpload(
         authentication: Authentication?,
         @Valid @RequestBody request: PresignedUploadRequest,
@@ -66,6 +69,7 @@ class MediaController(
     }
 
     @GetMapping("/presigned-download")
+    @RequireRanchPermission(RanchPermission.LECTURA)
     fun generatePresignedDownload(
         authentication: Authentication?,
         @RequestParam("s3Key") s3Key: String,
