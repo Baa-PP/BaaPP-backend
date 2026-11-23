@@ -5,6 +5,7 @@ import com.agrotech.oviapp.domain.model.RanchAccess
 import com.agrotech.oviapp.domain.model.RanchPermission
 import com.agrotech.oviapp.domain.port.RanchMembershipPort
 import com.agrotech.oviapp.media.presentation.MediaController
+import com.agrotech.oviapp.sync.presentation.SyncController
 import com.agrotech.oviapp.weights.presentation.WeightsController
 import com.tngtech.archunit.base.DescribedPredicate
 import com.tngtech.archunit.core.domain.JavaMethod
@@ -92,6 +93,7 @@ class RanchAuthorizationArchitectureTest {
             AnimalsController::class.java.name,
             WeightsController::class.java.name,
             MediaController::class.java.name,
+            SyncController::class.java.name,
         )
         val httpMappingAnnotations = listOf(
             GetMapping::class.java,
