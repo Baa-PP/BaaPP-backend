@@ -27,6 +27,22 @@ class SabanaPolicyTest {
             SabanaExportFormat.XLSX,
             SabanaPolicy.resolveFormat(null, SabanaColumnsSpec.XLSX_MEDIA_TYPE),
         )
+        assertEquals(
+            SabanaExportFormat.JSON,
+            SabanaPolicy.resolveFormat(null, "${SabanaColumnsSpec.XLSX_MEDIA_TYPE};q=0, application/json"),
+        )
+        assertEquals(
+            SabanaExportFormat.JSON,
+            SabanaPolicy.resolveFormat(null, "application/json;q=1.0, ${SabanaColumnsSpec.XLSX_MEDIA_TYPE};q=0.5"),
+        )
+        assertEquals(
+            SabanaExportFormat.XLSX,
+            SabanaPolicy.resolveFormat(null, "${SabanaColumnsSpec.XLSX_MEDIA_TYPE};q=0.9, application/json;q=0.5"),
+        )
+        assertEquals(
+            SabanaExportFormat.JSON,
+            SabanaPolicy.resolveFormat(null, "*/*"),
+        )
 
         val ex = assertThrows(DomainValidationException::class.java) {
             SabanaPolicy.resolveFormat("csv", null)
@@ -57,6 +73,6 @@ class SabanaPolicyTest {
         assertNull(SabanaPolicy.toSabanaSexFilter(null))
 
         assertNull(SabanaPolicy.toContainsLikePattern("   "))
-        assertEquals("%100!%!_!dorper%", SabanaPolicy.toContainsLikePattern(" 100%_!dorper "))
+        assertEquals("%100!%!_!!dorper%", SabanaPolicy.toContainsLikePattern(" 100%_!dorper "))
     }
 }

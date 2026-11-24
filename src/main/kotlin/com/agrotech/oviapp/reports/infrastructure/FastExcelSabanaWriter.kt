@@ -45,12 +45,11 @@ class FastExcelSabanaWriter : SabanaWorkbookWriterPort {
     }
 
     private fun writeDataRow(ws: Worksheet, r: Int, row: SabanaRow) {
-        // A: folio
-        ws.value(r, 0, row.folio)
-        // B: adn
-        writeOptionalString(ws, r, 1, row.adn)
-        // C: CHIP (484...) siempre como texto para no perder precisión numérica en Excel
-        writeOptionalString(ws, r, 2, row.chipSiniiga)
+        // A–C: identificadores de alta cardinalidad como inlineString para no acumularlos en la shared-string table
+        ws.inlineString(r, 0, row.folio)
+        writeOptionalInlineString(ws, r, 1, row.adn)
+        // C: CHIP (484...) siempre como texto inline para no perder precisión numérica en Excel
+        writeOptionalInlineString(ws, r, 2, row.chipSiniiga)
         // D: FECHA NACIMIENTO
         writeDate(ws, r, 3, row.fechaNacimiento)
         // E: FECHA DESTETE
@@ -71,31 +70,30 @@ class FastExcelSabanaWriter : SabanaWorkbookWriterPort {
         writeOptionalDecimal(ws, r, 11, row.circunferenciaEscrotalCm, TWO_DECIMAL_FORMAT)
         // M: PESO DESTETE
         writeOptionalDecimal(ws, r, 12, row.pesoDesteteKg, TWO_DECIMAL_FORMAT)
-        // N: TIPO DESTETE
-        writeOptionalString(ws, r, 13, row.tipoDestete)
-        // O: PADRE
-        writeOptionalString(ws, r, 14, row.padreFolioInterno)
-        // P: FOLIO PADRE
-        writeOptionalString(ws, r, 15, row.folioPadreUno)
-        // Q: MADRE
-        writeOptionalString(ws, r, 16, row.madreFolioInterno)
-        // R: FOLIO MADRE
-        writeOptionalString(ws, r, 17, row.folioMadreUno)
-        // S: RAZA
+        // N: TIPO DESTETE (baja cardinalidad → shared string)
+        writeOptionalSharedString(ws, r, 13, row.tipoDestete)
+        // O–R: folios genealógicos de alta cardinalidad → inlineString
+        writeOptionalInlineString(ws, r, 14, row.padreFolioInterno)
+        writeOptionalInlineString(ws, r, 15, row.folioPadreUno)
+        writeOptionalInlineString(ws, r, 16, row.madreFolioInterno)
+        writeOptionalInlineString(ws, r, 17, row.folioMadreUno)
+        // S–W: atributos categóricos de baja cardinalidad → shared string
         ws.value(r, 18, row.raza)
-        // T: TIPO DE PARTO
         ws.value(r, 19, row.tipoParto)
-        // U: CONCEPCION
         ws.value(r, 20, row.concepcion)
-        // V: COLOR
         ws.value(r, 21, row.color)
-        // W: SEXO
         ws.value(r, 22, row.sexo)
         // X: FECHA CORTE
         writeDate(ws, r, 23, row.fechaCorteIso)
     }
 
-    private fun writeOptionalString(ws: Worksheet, r: Int, c: Int, value: String?) {
+    private fun writeOptionalInlineString(ws: Worksheet, r: Int, c: Int, value: String?) {
+        if (!value.isNullOrBlank()) {
+            ws.inlineString(r, c, value)
+        }
+    }
+
+    private fun writeOptionalSharedString(ws: Worksheet, r: Int, c: Int, value: String?) {
         if (!value.isNullOrBlank()) {
             ws.value(r, c, value)
         }

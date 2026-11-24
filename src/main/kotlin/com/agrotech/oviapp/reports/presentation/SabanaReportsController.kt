@@ -1,5 +1,6 @@
 package com.agrotech.oviapp.reports.presentation
 
+import com.agrotech.oviapp.domain.exception.DomainValidationException
 import com.agrotech.oviapp.domain.model.AnimalStatus
 import com.agrotech.oviapp.domain.model.RanchPermission
 import com.agrotech.oviapp.domain.model.Sex
@@ -73,9 +74,35 @@ class SabanaReportsController(
     private val getSabanaUseCase: GetSabanaUseCase,
 ) {
 
-    @GetMapping("/sabana")
+    @GetMapping("/sabana", params = ["format=xlsx"])
     @RequireRanchPermission(RanchPermission.EXPORTACION)
-    fun getSabana(
+    fun exportSabanaXlsxByParam(
+        authentication: Authentication?,
+        @RequestParam(name = "q", required = false) search: String?,
+        @RequestParam(name = "sexo", required = false) sex: Sex?,
+        @RequestParam(name = "raza", required = false) breed: String?,
+        @RequestParam(name = "estado", required = false) status: AnimalStatus?,
+    ): ResponseEntity<StreamingResponseBody> =
+        buildXlsxResponse(authentication, search, sex, breed, status)
+
+    @GetMapping(
+        "/sabana",
+        params = ["!format"],
+        headers = ["${HttpHeaders.ACCEPT}=${SabanaColumnsSpec.XLSX_MEDIA_TYPE}"],
+    )
+    @RequireRanchPermission(RanchPermission.EXPORTACION)
+    fun exportSabanaXlsxByAccept(
+        authentication: Authentication?,
+        @RequestParam(name = "q", required = false) search: String?,
+        @RequestParam(name = "sexo", required = false) sex: Sex?,
+        @RequestParam(name = "raza", required = false) breed: String?,
+        @RequestParam(name = "estado", required = false) status: AnimalStatus?,
+    ): ResponseEntity<StreamingResponseBody> =
+        buildXlsxResponse(authentication, search, sex, breed, status)
+
+    @GetMapping("/sabana", params = ["format!=xlsx"])
+    @RequireRanchPermission(RanchPermission.EXPORTACION)
+    fun getSabanaJson(
         authentication: Authentication?,
         @RequestParam(name = "format", required = false) format: String?,
         @RequestHeader(name = HttpHeaders.ACCEPT, required = false) acceptHeader: String?,
@@ -85,9 +112,15 @@ class SabanaReportsController(
         @RequestParam(name = "estado", required = false) status: AnimalStatus?,
         @RequestParam(name = "page", defaultValue = "0") page: Int,
         @RequestParam(name = "size", defaultValue = "100") size: Int,
-    ): ResponseEntity<Any> {
+    ): ResponseEntity<SabanaPageResponse> {
         val ranchId = ranchAccessAuthorizer.requireAuthorizedRanchId(authentication, RanchPermission.EXPORTACION)
         val resolvedFormat = SabanaPolicy.resolveFormat(formatParam = format, acceptHeader = acceptHeader)
+        if (resolvedFormat == SabanaExportFormat.XLSX) {
+            throw DomainValidationException(
+                code = "INVALID_EXPORT_FORMAT",
+                message = "Para exportar en Excel utilice el parámetro 'format=xlsx' o el encabezado Accept: ${SabanaColumnsSpec.XLSX_MEDIA_TYPE}.",
+            )
+        }
 
         val query = SabanaQuery(
             ranchId = ranchId,
@@ -98,26 +131,39 @@ class SabanaReportsController(
             page = page,
             size = size,
         )
-
-        if (resolvedFormat == SabanaExportFormat.XLSX) {
-            val filename = "sabana-$ranchId-${LocalDate.now(ZoneOffset.UTC)}.xlsx"
-            val body = StreamingResponseBody { outputStream ->
-                getSabanaUseCase.exportXlsx(query, outputStream)
-            }
-            return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(SabanaColumnsSpec.XLSX_MEDIA_TYPE))
-                .header(
-                    HttpHeaders.CONTENT_DISPOSITION,
-                    ContentDisposition.attachment().filename(filename).build().toString(),
-                )
-                .cacheControl(CacheControl.noStore())
-                .body(body)
-        }
-
         val pageResult = getSabanaUseCase.executePage(query).toResponse()
         return ResponseEntity.ok()
             .contentType(MediaType.APPLICATION_JSON)
             .body(pageResult)
+    }
+
+    private fun buildXlsxResponse(
+        authentication: Authentication?,
+        search: String?,
+        sex: Sex?,
+        breed: String?,
+        status: AnimalStatus?,
+    ): ResponseEntity<StreamingResponseBody> {
+        val ranchId = ranchAccessAuthorizer.requireAuthorizedRanchId(authentication, RanchPermission.EXPORTACION)
+        val query = SabanaQuery(
+            ranchId = ranchId,
+            search = search,
+            sex = sex,
+            breed = breed,
+            status = status,
+        )
+        val filename = "sabana-$ranchId-${LocalDate.now(ZoneOffset.UTC)}.xlsx"
+        val body = StreamingResponseBody { outputStream ->
+            getSabanaUseCase.exportXlsx(query, outputStream)
+        }
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType(SabanaColumnsSpec.XLSX_MEDIA_TYPE))
+            .header(
+                HttpHeaders.CONTENT_DISPOSITION,
+                ContentDisposition.attachment().filename(filename).build().toString(),
+            )
+            .cacheControl(CacheControl.noStore())
+            .body(body)
     }
 
     private fun SabanaPage.toResponse() = SabanaPageResponse(

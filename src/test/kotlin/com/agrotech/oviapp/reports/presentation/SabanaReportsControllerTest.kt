@@ -172,6 +172,42 @@ class SabanaReportsControllerTest {
     }
 
     @Test
+    fun `GET sabana with XLSX Accept header streams valid FastExcel workbook`() {
+        val expectedQuery = SabanaQuery(ranchId = ranchId)
+        willAnswer { invocation ->
+            val out = invocation.getArgument<OutputStream>(1)
+            xlsxWriter.writeXlsx(out) { emit -> emit(sampleRow()) }
+            null
+        }.given(getSabanaUseCase).exportXlsx(eqNonNull(expectedQuery), anyOutputStream())
+
+        val mvcResult = mockMvc.get("/api/v1/reports/sabana") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", ranchId.toString())
+            header(HttpHeaders.ACCEPT, SabanaColumnsSpec.XLSX_MEDIA_TYPE)
+        }.andExpect {
+            request { asyncStarted() }
+        }.andReturn()
+
+        mockMvc.perform(asyncDispatch(mvcResult))
+            .andExpect(status().isOk)
+            .andExpect(header().string(HttpHeaders.CONTENT_TYPE, SabanaColumnsSpec.XLSX_MEDIA_TYPE))
+    }
+
+    @Test
+    fun `GET sabana with unsupported format returns 400 INVALID_EXPORT_FORMAT`() {
+        mockMvc.get("/api/v1/reports/sabana") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", ranchId.toString())
+            param("format", "csv")
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_EXPORT_FORMAT") }
+        }
+
+        verifyNoInteractions(getSabanaUseCase)
+    }
+
+    @Test
     fun `WORKER_BRANCH without exportacion permission receives 403 before invoking use case`() {
         val worker = TestingAuthenticationToken("worker_read_only", null, "ROLE_WORKER_BRANCH")
         given(ranchMembershipPort.resolveAccess("worker_read_only", ranchId))

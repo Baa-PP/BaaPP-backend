@@ -125,9 +125,89 @@ object SabanaPolicy {
                 )
             }
         }
-        val acceptsXlsx = acceptHeader?.contains(SabanaColumnsSpec.XLSX_MEDIA_TYPE, ignoreCase = true) == true
-        return if (acceptsXlsx) SabanaExportFormat.XLSX else SabanaExportFormat.JSON
+        return resolveFormatFromAccept(acceptHeader)
     }
+
+    private fun resolveFormatFromAccept(acceptHeader: String?): SabanaExportFormat {
+        if (acceptHeader.isNullOrBlank()) {
+            return SabanaExportFormat.JSON
+        }
+        val ranges = parseMediaRanges(acceptHeader)
+        if (ranges.isEmpty()) {
+            return SabanaExportFormat.JSON
+        }
+
+        val xlsxQuality = qualityFor(ranges, "application", "vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        val jsonQuality = qualityFor(ranges, "application", "json")
+
+        return when {
+            xlsxQuality > 0.0 && xlsxQuality > jsonQuality -> SabanaExportFormat.XLSX
+            jsonQuality > 0.0 -> SabanaExportFormat.JSON
+            xlsxQuality > 0.0 -> SabanaExportFormat.XLSX
+            else -> SabanaExportFormat.JSON
+        }
+    }
+
+    private data class MediaRange(
+        val type: String,
+        val subtype: String,
+        val quality: Double,
+        val paramCount: Int,
+    )
+
+    private fun parseMediaRanges(acceptHeader: String): List<MediaRange> =
+        acceptHeader.split(",")
+            .mapNotNull { rawEntry ->
+                val parts = rawEntry.split(";").map { it.trim() }.filter { it.isNotEmpty() }
+                if (parts.isEmpty()) return@mapNotNull null
+
+                val mediaParts = parts[0].split("/")
+                if (mediaParts.size != 2) return@mapNotNull null
+                val type = mediaParts[0].trim().lowercase()
+                val subtype = mediaParts[1].trim().lowercase()
+                if (type.isEmpty() || subtype.isEmpty()) return@mapNotNull null
+
+                var quality = 1.0
+                var nonQParams = 0
+                for (param in parts.drop(1)) {
+                    val eqIdx = param.indexOf('=')
+                    if (eqIdx <= 0) continue
+                    val key = param.substring(0, eqIdx).trim().lowercase()
+                    val value = param.substring(eqIdx + 1).trim()
+                    if (key == "q") {
+                        val parsed = value.toDoubleOrNull()
+                        quality = if (parsed != null && parsed in 0.0..1.0) parsed else 0.0
+                    } else {
+                        nonQParams += 1
+                    }
+                }
+                MediaRange(type = type, subtype = subtype, quality = quality, paramCount = nonQParams)
+            }
+
+    private fun qualityFor(ranges: List<MediaRange>, targetType: String, targetSubtype: String): Double {
+        val matching = ranges.filter { range ->
+            (range.type == "*" && range.subtype == "*") ||
+                (range.type == targetType && range.subtype == "*") ||
+                (range.type == targetType && range.subtype == targetSubtype)
+        }
+        if (matching.isEmpty()) return 0.0
+
+        val bestMatch = matching.maxWith(
+            compareBy<MediaRange>(
+                { specificity(it) },
+                { it.paramCount },
+                { it.quality },
+            ),
+        )
+        return bestMatch.quality
+    }
+
+    private fun specificity(range: MediaRange): Int =
+        when {
+            range.type == "*" && range.subtype == "*" -> 0
+            range.subtype == "*" -> 1
+            else -> 2
+        }
 
     fun toSabanaSexFilter(sex: Sex?): String? =
         when (sex) {
