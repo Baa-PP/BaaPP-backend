@@ -43,6 +43,22 @@ class SabanaPolicyTest {
             SabanaExportFormat.JSON,
             SabanaPolicy.resolveFormat(null, "*/*"),
         )
+        assertEquals(
+            SabanaExportFormat.JSON,
+            SabanaPolicy.resolveFormat(null, "application/*"),
+        )
+        assertEquals(
+            SabanaExportFormat.XLSX,
+            SabanaPolicy.resolveFormat(null, "application/json;q=0, application/*"),
+        )
+        assertEquals(
+            SabanaExportFormat.XLSX,
+            SabanaPolicy.resolveFormat(null, "application/json;q=0, */*"),
+        )
+        assertEquals(
+            SabanaExportFormat.JSON,
+            SabanaPolicy.resolveFormat(null, "application/json;q=0"),
+        )
 
         val ex = assertThrows(DomainValidationException::class.java) {
             SabanaPolicy.resolveFormat("csv", null)

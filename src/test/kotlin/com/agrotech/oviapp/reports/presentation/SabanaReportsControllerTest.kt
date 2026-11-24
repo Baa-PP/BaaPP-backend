@@ -100,7 +100,7 @@ class SabanaReportsControllerTest {
             ),
         )
 
-        mockMvc.get("/api/v1/reports/sabana") {
+        val mvcResult = mockMvc.get("/api/v1/reports/sabana") {
             principal = ownerPrincipal
             header("X-Active-Ranch-Id", ranchId.toString())
             param("q", "79")
@@ -111,34 +111,37 @@ class SabanaReportsControllerTest {
             param("size", "50")
             accept = MediaType.APPLICATION_JSON
         }.andExpect {
-            status { isOk() }
-            content { contentTypeCompatibleWith(MediaType.APPLICATION_JSON) }
-            jsonPath("$.totalElements") { value(1) }
-            jsonPath("$.items[0].folio") { value("79") }
-            jsonPath("$.items[0].adn") { value("ADN-79") }
-            jsonPath("$.items[0].chipSiniiga") { value("484000123456789") }
-            jsonPath("$.items[0].fechaNacimiento") { value("2025-03-15") }
-            jsonPath("$.items[0].fechaDestete") { value("2025-05-29") }
-            jsonPath("$.items[0].edadMeses") { value(19.5) }
-            jsonPath("$.items[0].edadDias") { value(585) }
-            jsonPath("$.items[0].pesoNacimientoKg") { value(4.2) }
-            jsonPath("$.items[0].peso120DiasKg") { value(32.4) }
-            jsonPath("$.items[0].peso150DiasKg") { value(38.9) }
-            jsonPath("$.items[0].pesoEvaluacionKg") { value(46.1) }
-            jsonPath("$.items[0].circunferenciaEscrotalCm") { value(nullValue()) }
-            jsonPath("$.items[0].pesoDesteteKg") { value(21.5) }
-            jsonPath("$.items[0].tipoDestete") { value("SIMPLE") }
-            jsonPath("$.items[0].padreFolioInterno") { value("S-01") }
-            jsonPath("$.items[0].folioPadreUno") { value("268309MM-RP") }
-            jsonPath("$.items[0].madreFolioInterno") { value("M-12") }
-            jsonPath("$.items[0].folioMadreUno") { value("268310HH-RP") }
-            jsonPath("$.items[0].raza") { value("DORPER") }
-            jsonPath("$.items[0].tipoParto") { value("SIMPLE") }
-            jsonPath("$.items[0].concepcion") { value("MN") }
-            jsonPath("$.items[0].color") { value("BLANCO") }
-            jsonPath("$.items[0].sexo") { value("HEMBRA") }
-            jsonPath("$.items[0].fechaCorteIso") { value("2026-10-21") }
-        }
+            request { asyncStarted() }
+        }.andReturn()
+
+        mockMvc.perform(asyncDispatch(mvcResult))
+            .andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.totalElements").value(1))
+            .andExpect(jsonPath("$.items[0].folio").value("79"))
+            .andExpect(jsonPath("$.items[0].adn").value("ADN-79"))
+            .andExpect(jsonPath("$.items[0].chipSiniiga").value("484000123456789"))
+            .andExpect(jsonPath("$.items[0].fechaNacimiento").value("2025-03-15"))
+            .andExpect(jsonPath("$.items[0].fechaDestete").value("2025-05-29"))
+            .andExpect(jsonPath("$.items[0].edadMeses").value(19.5))
+            .andExpect(jsonPath("$.items[0].edadDias").value(585))
+            .andExpect(jsonPath("$.items[0].pesoNacimientoKg").value(4.2))
+            .andExpect(jsonPath("$.items[0].peso120DiasKg").value(32.4))
+            .andExpect(jsonPath("$.items[0].peso150DiasKg").value(38.9))
+            .andExpect(jsonPath("$.items[0].pesoEvaluacionKg").value(46.1))
+            .andExpect(jsonPath("$.items[0].circunferenciaEscrotalCm").value<Any?>(nullValue()))
+            .andExpect(jsonPath("$.items[0].pesoDesteteKg").value(21.5))
+            .andExpect(jsonPath("$.items[0].tipoDestete").value("SIMPLE"))
+            .andExpect(jsonPath("$.items[0].padreFolioInterno").value("S-01"))
+            .andExpect(jsonPath("$.items[0].folioPadreUno").value("268309MM-RP"))
+            .andExpect(jsonPath("$.items[0].madreFolioInterno").value("M-12"))
+            .andExpect(jsonPath("$.items[0].folioMadreUno").value("268310HH-RP"))
+            .andExpect(jsonPath("$.items[0].raza").value("DORPER"))
+            .andExpect(jsonPath("$.items[0].tipoParto").value("SIMPLE"))
+            .andExpect(jsonPath("$.items[0].concepcion").value("MN"))
+            .andExpect(jsonPath("$.items[0].color").value("BLANCO"))
+            .andExpect(jsonPath("$.items[0].sexo").value("HEMBRA"))
+            .andExpect(jsonPath("$.items[0].fechaCorteIso").value("2026-10-21"))
     }
 
     @Test
@@ -220,19 +223,10 @@ class SabanaReportsControllerTest {
     }
 
     @Test
-    fun `GET sabana honors mixed-q Accept headers with and without format parameter`() {
-        val expectedQuery = SabanaQuery(ranchId = ranchId)
-        given(getSabanaUseCase.executePage(expectedQuery)).willReturn(
-            SabanaPage(items = listOf(sampleRow()), page = 0, size = 100, totalElements = 1L, totalPages = 1),
-        )
-        willAnswer { invocation ->
-            val out = invocation.getArgument<OutputStream>(1)
-            xlsxWriter.writeXlsx(out) { emit -> emit(sampleRow()) }
-            null
-        }.given(getSabanaUseCase).exportXlsx(eqNonNull(expectedQuery), anyOutputStream())
+    fun `GET sabana with mixed-q Accept preferring XLSX streams XLSX workbook`() {
+        stubDefaultXlsx()
 
-        // Mixed-q favoring XLSX without format param -> streams XLSX
-        val xlsxPreferred = mockMvc.get("/api/v1/reports/sabana") {
+        val mvcResult = mockMvc.get("/api/v1/reports/sabana") {
             principal = ownerPrincipal
             header("X-Active-Ranch-Id", ranchId.toString())
             header(HttpHeaders.ACCEPT, "${SabanaColumnsSpec.XLSX_MEDIA_TYPE};q=0.9, application/json;q=0.5")
@@ -240,23 +234,34 @@ class SabanaReportsControllerTest {
             request { asyncStarted() }
         }.andReturn()
 
-        mockMvc.perform(asyncDispatch(xlsxPreferred))
+        mockMvc.perform(asyncDispatch(mvcResult))
             .andExpect(status().isOk)
             .andExpect(header().string(HttpHeaders.CONTENT_TYPE, SabanaColumnsSpec.XLSX_MEDIA_TYPE))
+    }
 
-        // Mixed-q favoring JSON without format param -> returns JSON synchronously
-        mockMvc.get("/api/v1/reports/sabana") {
+    @Test
+    fun `GET sabana with mixed-q Accept preferring JSON returns JSON`() {
+        stubDefaultPage()
+
+        val mvcResult = mockMvc.get("/api/v1/reports/sabana") {
             principal = ownerPrincipal
             header("X-Active-Ranch-Id", ranchId.toString())
             header(HttpHeaders.ACCEPT, "application/json;q=1.0, ${SabanaColumnsSpec.XLSX_MEDIA_TYPE};q=0.5")
         }.andExpect {
-            status { isOk() }
-            content { contentTypeCompatibleWith(MediaType.APPLICATION_JSON) }
-            jsonPath("$.items[0].folio") { value("79") }
-        }
+            request { asyncStarted() }
+        }.andReturn()
 
-        // Tie q=1.0 with XLSX listed first -> exportSabanaXlsxByAccept delegates to resolveFormat -> returns JSON
-        val tieResult = mockMvc.get("/api/v1/reports/sabana") {
+        mockMvc.perform(asyncDispatch(mvcResult))
+            .andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.items[0].folio").value("79"))
+    }
+
+    @Test
+    fun `GET sabana with equal-q XLSX and JSON Accept returns JSON`() {
+        stubDefaultPage()
+
+        val mvcResult = mockMvc.get("/api/v1/reports/sabana") {
             principal = ownerPrincipal
             header("X-Active-Ranch-Id", ranchId.toString())
             header(HttpHeaders.ACCEPT, "${SabanaColumnsSpec.XLSX_MEDIA_TYPE}, application/json")
@@ -264,12 +269,16 @@ class SabanaReportsControllerTest {
             request { asyncStarted() }
         }.andReturn()
 
-        mockMvc.perform(asyncDispatch(tieResult))
+        mockMvc.perform(asyncDispatch(mvcResult))
             .andExpect(status().isOk)
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
             .andExpect(jsonPath("$.items[0].folio").value("79"))
+    }
 
-        // Mixed-q favoring XLSX overridden by explicit format=json -> returns JSON
+    @Test
+    fun `GET sabana explicit format=json overrides XLSX-preferring Accept header`() {
+        stubDefaultPage()
+
         mockMvc.get("/api/v1/reports/sabana") {
             principal = ownerPrincipal
             header("X-Active-Ranch-Id", ranchId.toString())
@@ -280,9 +289,13 @@ class SabanaReportsControllerTest {
             content { contentTypeCompatibleWith(MediaType.APPLICATION_JSON) }
             jsonPath("$.items[0].folio") { value("79") }
         }
+    }
 
-        // Mixed-q favoring JSON overridden by explicit format=xlsx -> streams XLSX
-        val forcedXlsx = mockMvc.get("/api/v1/reports/sabana") {
+    @Test
+    fun `GET sabana explicit format=xlsx overrides JSON-preferring Accept header`() {
+        stubDefaultXlsx()
+
+        val mvcResult = mockMvc.get("/api/v1/reports/sabana") {
             principal = ownerPrincipal
             header("X-Active-Ranch-Id", ranchId.toString())
             header(HttpHeaders.ACCEPT, "application/json;q=1.0, ${SabanaColumnsSpec.XLSX_MEDIA_TYPE};q=0.5")
@@ -291,35 +304,33 @@ class SabanaReportsControllerTest {
             request { asyncStarted() }
         }.andReturn()
 
-        mockMvc.perform(asyncDispatch(forcedXlsx))
+        mockMvc.perform(asyncDispatch(mvcResult))
             .andExpect(status().isOk)
             .andExpect(header().string(HttpHeaders.CONTENT_TYPE, SabanaColumnsSpec.XLSX_MEDIA_TYPE))
     }
 
     @Test
-    fun `GET sabana handles application wildcard Accept header with and without format parameter`() {
-        val expectedQuery = SabanaQuery(ranchId = ranchId)
-        given(getSabanaUseCase.executePage(expectedQuery)).willReturn(
-            SabanaPage(items = listOf(sampleRow()), page = 0, size = 100, totalElements = 1L, totalPages = 1),
-        )
-        willAnswer { invocation ->
-            val out = invocation.getArgument<OutputStream>(1)
-            xlsxWriter.writeXlsx(out) { emit -> emit(sampleRow()) }
-            null
-        }.given(getSabanaUseCase).exportXlsx(eqNonNull(expectedQuery), anyOutputStream())
+    fun `GET sabana with application wildcard Accept header returns JSON`() {
+        stubDefaultPage()
 
-        // application/* without format -> resolves to JSON
-        mockMvc.get("/api/v1/reports/sabana") {
+        val mvcResult = mockMvc.get("/api/v1/reports/sabana") {
             principal = ownerPrincipal
             header("X-Active-Ranch-Id", ranchId.toString())
             header(HttpHeaders.ACCEPT, "application/*")
         }.andExpect {
-            status { isOk() }
-            content { contentTypeCompatibleWith(MediaType.APPLICATION_JSON) }
-            jsonPath("$.items[0].folio") { value("79") }
-        }
+            request { asyncStarted() }
+        }.andReturn()
 
-        // application/* with format=json -> resolves to JSON
+        mockMvc.perform(asyncDispatch(mvcResult))
+            .andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.items[0].folio").value("79"))
+    }
+
+    @Test
+    fun `GET sabana with application wildcard Accept header honors explicit format=json`() {
+        stubDefaultPage()
+
         mockMvc.get("/api/v1/reports/sabana") {
             principal = ownerPrincipal
             header("X-Active-Ranch-Id", ranchId.toString())
@@ -330,9 +341,13 @@ class SabanaReportsControllerTest {
             content { contentTypeCompatibleWith(MediaType.APPLICATION_JSON) }
             jsonPath("$.items[0].folio") { value("79") }
         }
+    }
 
-        // application/* with format=xlsx -> streams XLSX
-        val xlsxResult = mockMvc.get("/api/v1/reports/sabana") {
+    @Test
+    fun `GET sabana with application wildcard Accept header honors explicit format=xlsx`() {
+        stubDefaultXlsx()
+
+        val mvcResult = mockMvc.get("/api/v1/reports/sabana") {
             principal = ownerPrincipal
             header("X-Active-Ranch-Id", ranchId.toString())
             header(HttpHeaders.ACCEPT, "application/*")
@@ -341,9 +356,61 @@ class SabanaReportsControllerTest {
             request { asyncStarted() }
         }.andReturn()
 
-        mockMvc.perform(asyncDispatch(xlsxResult))
+        mockMvc.perform(asyncDispatch(mvcResult))
             .andExpect(status().isOk)
             .andExpect(header().string(HttpHeaders.CONTENT_TYPE, SabanaColumnsSpec.XLSX_MEDIA_TYPE))
+    }
+
+    @Test
+    fun `GET sabana with application json q=0 and application wildcard Accept streams XLSX`() {
+        stubDefaultXlsx()
+
+        val mvcResult = mockMvc.get("/api/v1/reports/sabana") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", ranchId.toString())
+            header(HttpHeaders.ACCEPT, "application/json;q=0, application/*")
+        }.andExpect {
+            request { asyncStarted() }
+        }.andReturn()
+
+        mockMvc.perform(asyncDispatch(mvcResult))
+            .andExpect(status().isOk)
+            .andExpect(header().string(HttpHeaders.CONTENT_TYPE, SabanaColumnsSpec.XLSX_MEDIA_TYPE))
+    }
+
+    @Test
+    fun `GET sabana with application json q=0 and wildcard Accept streams XLSX`() {
+        stubDefaultXlsx()
+
+        val mvcResult = mockMvc.get("/api/v1/reports/sabana") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", ranchId.toString())
+            header(HttpHeaders.ACCEPT, "application/json;q=0, */*")
+        }.andExpect {
+            request { asyncStarted() }
+        }.andReturn()
+
+        mockMvc.perform(asyncDispatch(mvcResult))
+            .andExpect(status().isOk)
+            .andExpect(header().string(HttpHeaders.CONTENT_TYPE, SabanaColumnsSpec.XLSX_MEDIA_TYPE))
+    }
+
+    @Test
+    fun `GET sabana with only application json q=0 falls back to JSON`() {
+        stubDefaultPage()
+
+        val mvcResult = mockMvc.get("/api/v1/reports/sabana") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", ranchId.toString())
+            header(HttpHeaders.ACCEPT, "application/json;q=0")
+        }.andExpect {
+            request { asyncStarted() }
+        }.andReturn()
+
+        mockMvc.perform(asyncDispatch(mvcResult))
+            .andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.items[0].folio").value("79"))
     }
 
     @Test
@@ -387,13 +454,17 @@ class SabanaReportsControllerTest {
             SabanaPage(items = emptyList(), page = 0, size = 100, totalElements = 0L, totalPages = 0),
         )
 
-        mockMvc.get("/api/v1/reports/sabana") {
+        val mvcResult = mockMvc.get("/api/v1/reports/sabana") {
             principal = worker
             header("X-Active-Ranch-Id", ranchId.toString())
         }.andExpect {
-            status { isOk() }
-            jsonPath("$.totalElements") { value(0) }
-        }
+            request { asyncStarted() }
+        }.andReturn()
+
+        mockMvc.perform(asyncDispatch(mvcResult))
+            .andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.totalElements").value(0))
     }
 
     @Test
@@ -414,6 +485,20 @@ class SabanaReportsControllerTest {
         }
 
         verifyNoInteractions(getSabanaUseCase)
+    }
+
+    private fun stubDefaultPage() {
+        given(getSabanaUseCase.executePage(SabanaQuery(ranchId = ranchId))).willReturn(
+            SabanaPage(items = listOf(sampleRow()), page = 0, size = 100, totalElements = 1L, totalPages = 1),
+        )
+    }
+
+    private fun stubDefaultXlsx() {
+        willAnswer { invocation ->
+            val out = invocation.getArgument<OutputStream>(1)
+            xlsxWriter.writeXlsx(out) { emit -> emit(sampleRow()) }
+            null
+        }.given(getSabanaUseCase).exportXlsx(eqNonNull(SabanaQuery(ranchId = ranchId)), anyOutputStream())
     }
 
     private fun <T> eqNonNull(value: T): T {

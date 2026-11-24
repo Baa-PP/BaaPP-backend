@@ -114,13 +114,9 @@ class SabanaReportsController(
             size = size,
         )
 
-    @GetMapping(
-        "/sabana",
-        params = ["!format"],
-        produces = [SabanaColumnsSpec.XLSX_MEDIA_TYPE],
-    )
+    @GetMapping("/sabana", params = ["!format"])
     @RequireRanchPermission(RanchPermission.EXPORTACION)
-    fun exportSabanaXlsxByAccept(
+    fun getSabana(
         authentication: Authentication?,
         @RequestHeader(name = HttpHeaders.ACCEPT, required = false) acceptHeader: String?,
         @RequestParam(name = "q", required = false) search: String?,
@@ -141,23 +137,6 @@ class SabanaReportsController(
             page = page,
             size = size,
         )
-
-    @GetMapping(
-        "/sabana",
-        params = ["!format"],
-        produces = [MediaType.APPLICATION_JSON_VALUE, "application/*", MediaType.ALL_VALUE],
-    )
-    @RequireRanchPermission(RanchPermission.EXPORTACION)
-    fun getSabanaJson(
-        authentication: Authentication?,
-        @RequestParam(name = "q", required = false) search: String?,
-        @RequestParam(name = "sexo", required = false) sex: Sex?,
-        @RequestParam(name = "raza", required = false) breed: String?,
-        @RequestParam(name = "estado", required = false) status: AnimalStatus?,
-        @RequestParam(name = "page", defaultValue = "0") page: Int,
-        @RequestParam(name = "size", defaultValue = "100") size: Int,
-    ): ResponseEntity<SabanaPageResponse> =
-        buildJsonPageResponse(authentication, search, sex, breed, status, page, size)
 
     private fun buildJsonPageResponse(
         authentication: Authentication?,
@@ -208,9 +187,9 @@ class SabanaReportsController(
         )
 
         if (resolvedFormat == SabanaExportFormat.JSON) {
-            val pageResult = getSabanaUseCase.executePage(query).toResponse()
+            val payload = objectMapper.writeValueAsBytes(getSabanaUseCase.executePage(query).toResponse())
             val body = StreamingResponseBody { outputStream ->
-                objectMapper.writeValue(outputStream, pageResult)
+                outputStream.write(payload)
             }
             return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_JSON)
