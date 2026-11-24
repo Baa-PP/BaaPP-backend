@@ -36,7 +36,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.io.ByteArrayInputStream
 import java.io.OutputStream
@@ -189,6 +191,157 @@ class SabanaReportsControllerTest {
         }.andReturn()
 
         mockMvc.perform(asyncDispatch(mvcResult))
+            .andExpect(status().isOk)
+            .andExpect(header().string(HttpHeaders.CONTENT_TYPE, SabanaColumnsSpec.XLSX_MEDIA_TYPE))
+    }
+
+    @Test
+    fun `GET sabana routes normalized XLSX format aliases to streaming handler`() {
+        val expectedQuery = SabanaQuery(ranchId = ranchId)
+        willAnswer { invocation ->
+            val out = invocation.getArgument<OutputStream>(1)
+            xlsxWriter.writeXlsx(out) { emit -> emit(sampleRow()) }
+            null
+        }.given(getSabanaUseCase).exportXlsx(eqNonNull(expectedQuery), anyOutputStream())
+
+        for (alias in listOf("XLSX", "excel", " EXCEL ", " xlsx ")) {
+            val mvcResult = mockMvc.get("/api/v1/reports/sabana") {
+                principal = ownerPrincipal
+                header("X-Active-Ranch-Id", ranchId.toString())
+                param("format", alias)
+            }.andExpect {
+                request { asyncStarted() }
+            }.andReturn()
+
+            mockMvc.perform(asyncDispatch(mvcResult))
+                .andExpect(status().isOk)
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, SabanaColumnsSpec.XLSX_MEDIA_TYPE))
+        }
+    }
+
+    @Test
+    fun `GET sabana honors mixed-q Accept headers with and without format parameter`() {
+        val expectedQuery = SabanaQuery(ranchId = ranchId)
+        given(getSabanaUseCase.executePage(expectedQuery)).willReturn(
+            SabanaPage(items = listOf(sampleRow()), page = 0, size = 100, totalElements = 1L, totalPages = 1),
+        )
+        willAnswer { invocation ->
+            val out = invocation.getArgument<OutputStream>(1)
+            xlsxWriter.writeXlsx(out) { emit -> emit(sampleRow()) }
+            null
+        }.given(getSabanaUseCase).exportXlsx(eqNonNull(expectedQuery), anyOutputStream())
+
+        // Mixed-q favoring XLSX without format param -> streams XLSX
+        val xlsxPreferred = mockMvc.get("/api/v1/reports/sabana") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", ranchId.toString())
+            header(HttpHeaders.ACCEPT, "${SabanaColumnsSpec.XLSX_MEDIA_TYPE};q=0.9, application/json;q=0.5")
+        }.andExpect {
+            request { asyncStarted() }
+        }.andReturn()
+
+        mockMvc.perform(asyncDispatch(xlsxPreferred))
+            .andExpect(status().isOk)
+            .andExpect(header().string(HttpHeaders.CONTENT_TYPE, SabanaColumnsSpec.XLSX_MEDIA_TYPE))
+
+        // Mixed-q favoring JSON without format param -> returns JSON synchronously
+        mockMvc.get("/api/v1/reports/sabana") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", ranchId.toString())
+            header(HttpHeaders.ACCEPT, "application/json;q=1.0, ${SabanaColumnsSpec.XLSX_MEDIA_TYPE};q=0.5")
+        }.andExpect {
+            status { isOk() }
+            content { contentTypeCompatibleWith(MediaType.APPLICATION_JSON) }
+            jsonPath("$.items[0].folio") { value("79") }
+        }
+
+        // Tie q=1.0 with XLSX listed first -> exportSabanaXlsxByAccept delegates to resolveFormat -> returns JSON
+        val tieResult = mockMvc.get("/api/v1/reports/sabana") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", ranchId.toString())
+            header(HttpHeaders.ACCEPT, "${SabanaColumnsSpec.XLSX_MEDIA_TYPE}, application/json")
+        }.andExpect {
+            request { asyncStarted() }
+        }.andReturn()
+
+        mockMvc.perform(asyncDispatch(tieResult))
+            .andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.items[0].folio").value("79"))
+
+        // Mixed-q favoring XLSX overridden by explicit format=json -> returns JSON
+        mockMvc.get("/api/v1/reports/sabana") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", ranchId.toString())
+            header(HttpHeaders.ACCEPT, "${SabanaColumnsSpec.XLSX_MEDIA_TYPE};q=0.9, application/json;q=0.5")
+            param("format", "json")
+        }.andExpect {
+            status { isOk() }
+            content { contentTypeCompatibleWith(MediaType.APPLICATION_JSON) }
+            jsonPath("$.items[0].folio") { value("79") }
+        }
+
+        // Mixed-q favoring JSON overridden by explicit format=xlsx -> streams XLSX
+        val forcedXlsx = mockMvc.get("/api/v1/reports/sabana") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", ranchId.toString())
+            header(HttpHeaders.ACCEPT, "application/json;q=1.0, ${SabanaColumnsSpec.XLSX_MEDIA_TYPE};q=0.5")
+            param("format", "xlsx")
+        }.andExpect {
+            request { asyncStarted() }
+        }.andReturn()
+
+        mockMvc.perform(asyncDispatch(forcedXlsx))
+            .andExpect(status().isOk)
+            .andExpect(header().string(HttpHeaders.CONTENT_TYPE, SabanaColumnsSpec.XLSX_MEDIA_TYPE))
+    }
+
+    @Test
+    fun `GET sabana handles application wildcard Accept header with and without format parameter`() {
+        val expectedQuery = SabanaQuery(ranchId = ranchId)
+        given(getSabanaUseCase.executePage(expectedQuery)).willReturn(
+            SabanaPage(items = listOf(sampleRow()), page = 0, size = 100, totalElements = 1L, totalPages = 1),
+        )
+        willAnswer { invocation ->
+            val out = invocation.getArgument<OutputStream>(1)
+            xlsxWriter.writeXlsx(out) { emit -> emit(sampleRow()) }
+            null
+        }.given(getSabanaUseCase).exportXlsx(eqNonNull(expectedQuery), anyOutputStream())
+
+        // application/* without format -> resolves to JSON
+        mockMvc.get("/api/v1/reports/sabana") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", ranchId.toString())
+            header(HttpHeaders.ACCEPT, "application/*")
+        }.andExpect {
+            status { isOk() }
+            content { contentTypeCompatibleWith(MediaType.APPLICATION_JSON) }
+            jsonPath("$.items[0].folio") { value("79") }
+        }
+
+        // application/* with format=json -> resolves to JSON
+        mockMvc.get("/api/v1/reports/sabana") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", ranchId.toString())
+            header(HttpHeaders.ACCEPT, "application/*")
+            param("format", "json")
+        }.andExpect {
+            status { isOk() }
+            content { contentTypeCompatibleWith(MediaType.APPLICATION_JSON) }
+            jsonPath("$.items[0].folio") { value("79") }
+        }
+
+        // application/* with format=xlsx -> streams XLSX
+        val xlsxResult = mockMvc.get("/api/v1/reports/sabana") {
+            principal = ownerPrincipal
+            header("X-Active-Ranch-Id", ranchId.toString())
+            header(HttpHeaders.ACCEPT, "application/*")
+            param("format", "xlsx")
+        }.andExpect {
+            request { asyncStarted() }
+        }.andReturn()
+
+        mockMvc.perform(asyncDispatch(xlsxResult))
             .andExpect(status().isOk)
             .andExpect(header().string(HttpHeaders.CONTENT_TYPE, SabanaColumnsSpec.XLSX_MEDIA_TYPE))
     }
