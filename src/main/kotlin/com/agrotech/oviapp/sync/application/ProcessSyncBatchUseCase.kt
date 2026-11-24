@@ -97,8 +97,11 @@ class ProcessSyncBatchUseCase(
                     )
                 }
 
-                applyMutation(command, mutation)
+                // Claim the mutation ID before domain writes so a concurrent duplicate fails on the PK
+                // constraint (ALREADY_PROCESSED) instead of hitting domain duplicate checks (REJECTED).
+                // If applyMutation throws, the inner transaction rolls back the claim so retries stay possible.
                 processedMutationPort.recordProcessed(mutation.mutationId, command.ranchId, clock.instant())
+                applyMutation(command, mutation)
                 SyncMutationStatus.APPLIED
             }
             SyncBatchResultItem(

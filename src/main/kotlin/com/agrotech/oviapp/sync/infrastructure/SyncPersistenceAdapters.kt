@@ -474,12 +474,16 @@ class SyncPayloadParserAdapter(
         )
     }
 
-    private fun <T> deserialize(payloadJson: String, targetType: Class<T>): T {
+    private fun <T : Any> deserialize(payloadJson: String, targetType: Class<T>): T {
         if (payloadJson.isBlank()) {
             throw DomainValidationException("INVALID_SYNC_PAYLOAD", "El payload de la mutación no puede estar vacío.")
         }
         return try {
             objectMapper.readValue(payloadJson, targetType)
+                ?: throw DomainValidationException(
+                    code = "INVALID_SYNC_PAYLOAD",
+                    message = "El payload de la mutación no puede ser null.",
+                )
         } catch (ex: JsonProcessingException) {
             throw DomainValidationException(
                 code = "INVALID_SYNC_PAYLOAD",

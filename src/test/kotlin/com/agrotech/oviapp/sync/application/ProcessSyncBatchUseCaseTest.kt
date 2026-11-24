@@ -404,6 +404,54 @@ class ProcessSyncBatchUseCaseTest {
         assertTrue(store.animals.isEmpty())
     }
 
+    @Test
+    fun `claims mutationId before domain writes so concurrent duplicate with already-committed animal returns ALREADY_PROCESSED`() {
+        val mutationId = UUID.randomUUID()
+        val animalId = UUID.randomUUID()
+        // Concurrent request already committed the animal row before this request reached the domain check.
+        store.animals[animalId] = AnimalRecord(
+            id = animalId,
+            ranchId = ranchId,
+            folioInterno = "RACE-02",
+            breed = "Dorper",
+            color = "Blanco",
+            sex = Sex.MALE,
+            birthDate = LocalDate.of(2026, 10, 5),
+            lifeStage = LifeStage.LAMB_LACTATING,
+            reproductiveStatus = ReproductiveStatus.EMPTY,
+            status = AnimalStatus.ACTIVE,
+            updatedAt = fixedInstant,
+        )
+        store.simulateRaceOnNextRecordProcessed = true
+
+        val json = """
+            {
+              "id": "$animalId",
+              "folioInterno": "RACE-02",
+              "breed": "Dorper",
+              "color": "Blanco",
+              "sex": "MALE",
+              "birthDate": "2026-10-05",
+              "lifeStage": "LAMB_LACTATING",
+              "reproductiveStatus": "EMPTY"
+            }
+        """.trimIndent()
+
+        val result = useCase.execute(
+            SyncBatchCommand(
+                ranchId = ranchId,
+                actorUsername = "owner_1",
+                actorRole = Role.OWNER,
+                canEditAnimals = true,
+                mutations = listOf(mutation(mutationId, SyncEntityType.ANIMAL, SyncOperation.CREATE, json)),
+            ),
+        )
+
+        assertEquals(1, result.alreadyProcessedCount)
+        assertEquals(0, result.rejectedCount)
+        assertEquals(SyncMutationStatus.ALREADY_PROCESSED, result.results.single().status)
+    }
+
     private fun mutation(
         id: UUID,
         entityType: SyncEntityType,

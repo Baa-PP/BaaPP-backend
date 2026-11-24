@@ -207,4 +207,14 @@ class SyncPersistenceAdaptersTest {
         }
         assertEquals("INVALID_SYNC_PAYLOAD", ex.code)
     }
+
+    @Test
+    fun `SyncPayloadParserAdapter rejects JSON null payload as INVALID_SYNC_PAYLOAD`() {
+        val parser = SyncPayloadParserAdapter(jacksonObjectMapper().registerModule(JavaTimeModule()))
+
+        val ex = assertThrows(DomainValidationException::class.java) {
+            parser.parseAnimalCreate("null")
+        }
+        assertEquals("INVALID_SYNC_PAYLOAD", ex.code)
+    }
 }
