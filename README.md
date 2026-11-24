@@ -128,6 +128,15 @@ $env:PORT="5000"
 
 ---
 
+## Documentación Central (`Baa-PP/docs`)
+
+La documentación oficial del ecosistema se mantiene de forma centralizada en **[`Baa-PP/docs`](https://github.com/Baa-PP/docs)** (única fuente de verdad, sin copias locales en este repositorio):
+* **[Diseño de Base de Datos (`DATABASE_DESIGN.md`)](https://github.com/Baa-PP/docs/blob/main/arquitectura-y-bd/DATABASE_DESIGN.md)**
+* **[Estándares de Documentación (`DOCUMENTATION_STANDARDS.md`)](https://github.com/Baa-PP/docs/blob/main/guias/DOCUMENTATION_STANDARDS.md)**
+* **[Reglas de Commits y PRs (`COMMIT_AND_PR_RULES.md`)](https://github.com/Baa-PP/docs/blob/main/guias/COMMIT_AND_PR_RULES.md)**
+
+---
+
 ## Equipo de Desarrollo
 
 * **[Lucas Patrick Castineiras]** — Ingeniería de Software (5.º Semestre) · [GitHub](https://github.com/Locas1000)
