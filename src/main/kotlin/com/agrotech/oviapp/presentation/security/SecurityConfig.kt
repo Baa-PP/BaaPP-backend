@@ -1,5 +1,6 @@
 package com.agrotech.oviapp.presentation.security
 
+import jakarta.servlet.DispatcherType
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -19,7 +20,14 @@ class SecurityConfig(
     private val allowedOriginsRaw: String,
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
 ) {
-    /** Stateless JWT/API security chain; permits health checks, auth endpoints, and configured web origins. */
+    /**
+     * Stateless JWT/API security chain; permits health checks, auth endpoints, and configured web origins.
+     *
+     * Permits servlet-container [DispatcherType.ASYNC] completion redispatches (e.g., [org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody]
+     * responses) because external requests always enter as [DispatcherType.REQUEST] and must pass JWT authentication,
+     * ranch-context validation, and permission checks before async streaming can begin. Keeping [SessionCreationPolicy.STATELESS]
+     * avoids persisting security context across requests or re-running membership lookups during async completion.
+     */
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain =
         http
@@ -30,6 +38,7 @@ class SecurityConfig(
                 it.authenticationEntryPoint(HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
             }
             .authorizeHttpRequests { auth ->
+                auth.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                 auth.requestMatchers(
                     "/health",
                     "/api/v1/health",
