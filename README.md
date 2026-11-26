@@ -30,7 +30,7 @@ Para evitar que los detalles de base de datos o del framework web contaminen las
    * **Media Storage:** URLs pre-firmadas (PUT/GET) hacia el bucket privado `agrotech-oviapp-media` en **Amazon S3**.
    * **Scheduler:** `WeaningAlertScheduler` (diario, 07:00 UTC por defecto) que detecta corderos activos sin destetar al cumplir `ranchos.dias_meta_destete` y envía una alerta push por rancho vía **Firebase Cloud Messaging (FCM)**, sin repetir corderos ya notificados (`alertas_destete_enviadas`). Los dispositivos se registran con `POST /api/v1/notifications/device-token`.
 4. **`presentation` (Controladores REST y Seguridad Multi-Tenant):**
-   * Endpoints `/api/v1/animals`, `/api/v1/births`, `/api/v1/sync/batch`, `/api/v1/reports/sabana`, `/api/v1/association/audits`.
+   * Endpoints `/api/v1/animals`, `/api/v1/analytics/overview`, `/api/v1/births`, `/api/v1/sync/batch`, `/api/v1/reports/sabana`, `/api/v1/association/audits`.
    * Autenticación **JWT Stateless** + `RanchContextInterceptor` (`X-Active-Ranch-Id`) para aislamiento por rancho (**Cuenta Matriz + Ramas**) y cambio de contexto multi-rancho para Asociación y Técnicos.
 
 ---
