@@ -28,7 +28,7 @@ Para evitar que los detalles de base de datos o del framework web contaminen las
    * **Persistencia:** Spring Data JPA + **PostgreSQL 16 (Amazon RDS)** gestionado con migraciones **Flyway** (`V1__init_schema.sql`).
    * **Excel Sábana:** Generación e importación streaming de las 24 columnas (`A` a `X`) de `SABANA OCT 2026 DORPER.xlsx` con **FastExcel (`org.dhatim`)**.
    * **Media Storage:** URLs pre-firmadas (PUT/GET) hacia el bucket privado `agrotech-oviapp-media` en **Amazon S3**.
-   * **Scheduler:** `WeaningAlertScheduler` (`@Scheduled(cron = "0 0 6 * * *")`) que detecta corderos al cumplir **75 días** desde el parto y envía alertas push vía **Firebase Cloud Messaging (FCM)**.
+   * **Scheduler:** `WeaningAlertScheduler` (diario, 07:00 UTC por defecto) que detecta corderos activos sin destetar al cumplir `ranchos.dias_meta_destete` y envía una alerta push por rancho vía **Firebase Cloud Messaging (FCM)**, sin repetir corderos ya notificados (`alertas_destete_enviadas`). Los dispositivos se registran con `POST /api/v1/notifications/device-token`.
 4. **`presentation` (Controladores REST y Seguridad Multi-Tenant):**
    * Endpoints `/api/v1/animals`, `/api/v1/births`, `/api/v1/sync/batch`, `/api/v1/reports/sabana`, `/api/v1/association/audits`.
    * Autenticación **JWT Stateless** + `RanchContextInterceptor` (`X-Active-Ranch-Id`) para aislamiento por rancho (**Cuenta Matriz + Ramas**) y cambio de contexto multi-rancho para Asociación y Técnicos.
@@ -113,6 +113,12 @@ $env:JDBC_DATABASE_URL="jdbc:postgresql://localhost:5432/oviapp"
 $env:RDS_USERNAME="postgres"
 $env:RDS_PASSWORD="tu_password"
 $env:PORT="5000"
+```
+
+Alertas push de destete (desactivadas por defecto). Para activarlas, define la ruta al JSON de la cuenta de servicio de Firebase (nunca lo subas al repo):
+```powershell
+$env:WEANING_ALERTS_ENABLED="true"
+$env:FIREBASE_CREDENTIALS_PATH="C:\ruta\firebase-service-account.json"
 ```
 
 ### 4. Compilar, Probar y Levantar el Servidor
